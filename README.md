@@ -172,6 +172,8 @@ The final assistant response is stored in session history
 | Model communication | Ollama Python client |
 | Testing | Pytest |
 | Containerization | Docker |
+| Infrastructure as Code | Terraform |
+| Cloud platform | AWS EC2 |
 | Version control | Git |
 
 ---
@@ -185,8 +187,18 @@ local-ai-assistant-ollama/
 ├── config.py
 ├── requirements.txt
 ├── Dockerfile
+├── server_script.sh
+├── docker_setup.sh
 ├── README.md
 ├── .gitignore
+├── terraform/
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── versions.tf
+│   ├── user_data.sh.tftpl
+│   ├── terraform.tfvars.example
+│   └── README.md
 ├── tests/
 │   └── test_ollama_client.py
 └── screenshots/
