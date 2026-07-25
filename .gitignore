@@ -4,3 +4,14 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+.vscode/
+
+# Terraform runtime files and local secrets
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+terraform/*.plan
+terraform/tfplan
+terraform/*.pem
+terraform/terraform.tfvars

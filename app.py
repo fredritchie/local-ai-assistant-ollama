@@ -9,12 +9,12 @@ from ollama_client import OllamaClientError, list_models, stream_chat
 
 
 st.set_page_config(
-    page_title="Local AI Assistant",
+    page_title="Fred's AI Assistant",
     page_icon="🤖",
     layout="centered",
 )
 
-st.title("Local AI Assistant")
+st.title("Fred's AI Assistant")
 st.caption("Runs locally using Ollama and Streamlit.")
 
 
