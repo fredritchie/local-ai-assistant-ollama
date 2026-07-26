@@ -24,7 +24,8 @@ install_python() {
                 exit 1
             fi
             brew install python
-            export PATH="$(brew --prefix)/bin:$PATH"
+            PATH="$(brew --prefix)/bin:$PATH"
+            export PATH
             ;;
         Linux)
             if command -v apt-get >/dev/null 2>&1; then
