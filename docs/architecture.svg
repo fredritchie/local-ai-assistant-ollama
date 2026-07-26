@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">Local AI Assistant repository and AWS architecture</title>
+  <desc id="desc">A browser reaches Streamlit in a GPU EC2 instance. Streamlit talks to Ollama and Ollama uses the NVIDIA GPU and model storage. Terraform creates the surrounding VPC and AWS resources.</desc>
+  <defs>
+    <style>
+      .bg{fill:#f8fafc}.zone{fill:#eef6ff;stroke:#2563eb;stroke-width:2}.box{fill:#fff;stroke:#334155;stroke-width:2}.accent{fill:#ecfdf5;stroke:#059669;stroke-width:2}.infra{fill:#fff7ed;stroke:#ea580c;stroke-width:2}.title{font:700 24px system-ui,sans-serif;fill:#0f172a}.label{font:600 17px system-ui,sans-serif;fill:#0f172a}.small{font:14px system-ui,sans-serif;fill:#334155}.arrow{stroke:#334155;stroke-width:2.5;fill:none;marker-end:url(#head)}
+    </style>
+    <marker id="head" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0 0L10 3L0 6Z" fill="#334155"/></marker>
+  </defs>
+  <rect class="bg" width="1200" height="650"/>
+  <text class="title" x="40" y="45">Local AI Assistant — runtime and AWS deployment</text>
+  <rect class="box" x="45" y="260" width="155" height="82" rx="12"/>
+  <text class="label" x="85" y="292">Browser</text><text class="small" x="66" y="318">Streamlit chat UI</text>
+  <rect class="infra" x="45" y="470" width="190" height="90" rx="12"/>
+  <text class="label" x="80" y="504">Terraform</text><text class="small" x="66" y="531">creates AWS resources</text>
+  <rect class="zone" x="275" y="85" width="875" height="505" rx="18"/>
+  <text class="title" x="305" y="125">AWS ap-south-1 · new VPC</text>
+  <rect class="infra" x="315" y="165" width="190" height="90" rx="12"/>
+  <text class="label" x="346" y="198">Security group</text><text class="small" x="337" y="225">8501 trusted CIDR</text><text class="small" x="337" y="246">22 optional</text>
+  <rect class="infra" x="315" y="465" width="190" height="85" rx="12"/>
+  <text class="label" x="355" y="498">IAM + SSM</text><text class="small" x="337" y="525">shell access by default</text>
+  <rect class="box" x="565" y="150" width="535" height="365" rx="16"/>
+  <text class="title" x="595" y="190">EC2 g4dn.xlarge · Ubuntu CUDA DLAMI</text>
+  <rect class="accent" x="610" y="230" width="195" height="95" rx="12"/>
+  <text class="label" x="667" y="265">Streamlit</text><text class="small" x="637" y="292">native or container</text>
+  <rect class="accent" x="860" y="230" width="195" height="95" rx="12"/>
+  <text class="label" x="925" y="265">Ollama</text><text class="small" x="891" y="292">localhost:11434</text>
+  <rect class="box" x="610" y="380" width="195" height="80" rx="12"/>
+  <text class="label" x="659" y="413">Encrypted gp3</text><text class="small" x="677" y="440">root volume</text>
+  <rect class="box" x="860" y="380" width="195" height="80" rx="12"/>
+  <text class="label" x="900" y="413">NVIDIA T4</text><text class="small" x="906" y="440">model inference</text>
+  <path class="arrow" d="M200 300H315"/><text class="small" x="214" y="286">HTTP :8501</text>
+  <path class="arrow" d="M505 210H610V260"/><path class="arrow" d="M805 277H860"/>
+  <path class="arrow" d="M958 325V380"/><path class="arrow" d="M235 515H315"/>
+  <path class="arrow" d="M505 507H565"/>
+  <text class="small" x="63" y="600">Ollama is never exposed publicly. Session Manager avoids inbound SSH and private keys by default.</text>
+</svg>

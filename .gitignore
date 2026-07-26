@@ -1,6 +1,9 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 *.pyc
 .env
 .DS_Store
@@ -15,3 +18,5 @@ terraform/*.plan
 terraform/tfplan
 terraform/*.pem
 terraform/terraform.tfvars
+terraform/backend.tf
+terraform/backend.hcl

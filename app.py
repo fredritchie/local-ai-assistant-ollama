@@ -4,9 +4,12 @@ import time
 
 import streamlit as st
 
-from config import DEFAULT_MODEL, DEFAULT_TEMPERATURE
+from config import (
+    DEFAULT_MODEL,
+    DEFAULT_TEMPERATURE,
+    MAX_HISTORY_MESSAGES,
+)
 from ollama_client import OllamaClientError, list_models, stream_chat
-
 
 st.set_page_config(
     page_title="Fred's AI Assistant",
@@ -89,7 +92,7 @@ if prompt:
 
         try:
             for chunk in stream_chat(
-                messages=st.session_state.messages,
+                messages=st.session_state.messages[-MAX_HISTORY_MESSAGES:],
                 model=selected_model,
                 temperature=temperature,
             ):

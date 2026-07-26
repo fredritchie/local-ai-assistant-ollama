@@ -3,9 +3,19 @@ from __future__ import annotations
 import time
 from collections.abc import Generator
 
-import ollama
+from ollama import Client
 
-from config import DEFAULT_MODEL, DEFAULT_TEMPERATURE
+from config import (
+    DEFAULT_MODEL,
+    DEFAULT_TEMPERATURE,
+    OLLAMA_BASE_URL,
+    REQUEST_TIMEOUT_SECONDS,
+)
+
+client = Client(
+    host=OLLAMA_BASE_URL,
+    timeout=REQUEST_TIMEOUT_SECONDS,
+)
 
 
 class OllamaClientError(RuntimeError):
@@ -15,7 +25,7 @@ class OllamaClientError(RuntimeError):
 def list_models() -> list[str]:
     """Return names of locally installed Ollama models."""
     try:
-        response = ollama.list()
+        response = client.list()
         return [model.model for model in response.models]
     except Exception as exc:
         raise OllamaClientError(
@@ -36,7 +46,7 @@ def stream_chat(
     start_time = time.perf_counter()
 
     try:
-        stream = ollama.chat(
+        stream = client.chat(
             model=model,
             messages=messages,
             stream=True,

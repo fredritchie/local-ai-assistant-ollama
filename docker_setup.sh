@@ -7,6 +7,7 @@ cd "$SCRIPT_DIR"
 
 IMAGE_NAME="local-ai-assistant"
 DEFAULT_MODEL="${DEFAULT_MODEL:-llama3.2:3b}"
+OLLAMA_VERSION="${OLLAMA_VERSION:-0.32.0}"
 OLLAMA_PID=""
 OLLAMA_LOG="${TMPDIR:-/tmp}/local-ai-assistant-ollama.log"
 DOCKER_COMMAND=(docker)
@@ -51,7 +52,7 @@ install_ollama() {
             ;;
         Linux)
             install_curl
-            curl -fsSL https://ollama.com/install.sh | sh
+            curl -fsSL https://ollama.com/install.sh | OLLAMA_VERSION="$OLLAMA_VERSION" sh
             ;;
         *)
             echo "Automatic Ollama installation is supported on Linux and macOS." >&2

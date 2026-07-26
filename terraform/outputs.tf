@@ -3,6 +3,11 @@ output "instance_id" {
   value       = aws_instance.app.id
 }
 
+output "aws_region" {
+  description = "AWS region containing the deployment."
+  value       = var.aws_region
+}
+
 output "public_ip" {
   description = "Public IPv4 address of the instance."
   value       = aws_instance.app.public_ip
@@ -13,14 +18,34 @@ output "streamlit_url" {
   value       = "http://${aws_instance.app.public_ip}:8501"
 }
 
+output "application_health_check_command" {
+  description = "Command that checks the public Streamlit health endpoint."
+  value       = "curl --fail --show-error http://${aws_instance.app.public_ip}:8501/_stcore/health"
+}
+
+output "wait_for_application_command" {
+  description = "Command that waits for bootstrap and application readiness."
+  value       = "./wait_for_application.sh"
+}
+
+output "deployment_mode" {
+  description = "Configured application runtime mode."
+  value       = var.deployment_mode
+}
+
 output "ssh_command" {
-  description = "Example SSH command for the Ubuntu DLAMI."
-  value       = "ssh -i ${local_sensitive_file.private_key.filename} ubuntu@${aws_instance.app.public_ip}"
+  description = "Example SSH command when optional SSH access is enabled."
+  value       = var.enable_ssh ? "ssh -i ${local_sensitive_file.private_key[0].filename} ubuntu@${aws_instance.app.public_ip}" : null
 }
 
 output "private_key_path" {
-  description = "Local path to the Terraform-generated SSH private key."
-  value       = local_sensitive_file.private_key.filename
+  description = "Local path to the generated key when SSH is enabled."
+  value       = var.enable_ssh ? local_sensitive_file.private_key[0].filename : null
+}
+
+output "ssm_session_command" {
+  description = "AWS Systems Manager Session Manager command for shell access."
+  value       = "aws ssm start-session --region ap-south-1 --target ${aws_instance.app.id}"
 }
 
 output "vpc_id" {

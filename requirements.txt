@@ -1,4 +1,2 @@
-streamlit
-ollama
-requests
-pytest
+streamlit>=1.40,<2.0
+ollama>=0.5,<1.0

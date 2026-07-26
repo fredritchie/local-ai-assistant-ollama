@@ -1,306 +1,191 @@
 # AWS GPU deployment with Terraform
 
-This directory deploys the Local AI Assistant on a GPU-backed EC2 instance in
-the AWS Mumbai region (`ap-south-1`).
+This stack deploys the application on a `g4dn.xlarge` EC2 instance in Mumbai
+(`ap-south-1`). It creates a new VPC, public subnet, internet gateway, route
+table, restricted security group, encrypted root disk, and an IAM role for AWS
+Systems Manager Session Manager.
 
-## What is created
-
-- A new VPC with DNS support
-- One public subnet in an Availability Zone that offers `g4dn.xlarge`
-- An internet gateway and public route table
-- A security group for restricted SSH and Streamlit access
-- A Terraform-generated 4096-bit RSA EC2 key pair and local `.pem` file
-- One `g4dn.xlarge` EC2 instance
-- The latest AWS Ubuntu 24.04 single-CUDA Deep Learning AMI
-- An encrypted 100 GiB gp3 root volume
-- Automated installation and startup of Ollama and the Streamlit application
-- EC2 termination with the OS shutdown step skipped during Terraform destroy
-
-```text
-Internet
-   |
-Internet Gateway
-   |
-Public subnet in the new VPC
-   |
-Security group
-   |-- TCP 22   <- allowed_ssh_cidr
-   `-- TCP 8501 <- allowed_app_cidr
-   |
-g4dn.xlarge EC2
-   |-- Ollama on localhost:11434
-   `-- Streamlit on 0.0.0.0:8501
-```
-
-Port `11434` is not exposed publicly. The application has no built-in
-authentication or TLS, so port `8501` should only be allowed from trusted
-addresses.
-
-## Files
-
-| File | Purpose |
-|---|---|
-| `versions.tf` | Terraform and AWS provider requirements |
-| `variables.tf` | Configurable deployment inputs and validation |
-| `main.tf` | VPC, networking, security group, AMI lookup, and EC2 instance |
-| `user_data.sh.tftpl` | EC2 bootstrap and systemd service configuration |
-| `outputs.tf` | Instance, network, SSH, and application outputs |
-| `terraform.tfvars.example` | Example deployment values |
+The Streamlit application is public only to `allowed_app_cidr`. Ollama remains
+bound to `localhost:11434`.
 
 ## Prerequisites
 
 - Terraform 1.6 or later
-- AWS CLI credentials with EC2, VPC, and SSM Parameter Store permissions
-- AWS CLI available locally for the skip-OS-shutdown destroy hook
-- Sufficient `g4dn.xlarge` On-Demand quota in `ap-south-1`
-- A public HTTPS repository URL that the instance can clone
+- AWS credentials with permissions for EC2, VPC, IAM, SSM, and the resources in
+  this stack
+- `g4dn.xlarge` On-Demand quota in `ap-south-1`
+- A public HTTPS Git repository that the instance can clone
+- AWS CLI and the Session Manager plugin for shell access
 
-Verify the local tools and AWS identity:
+Check your identity before deploying:
 
 ```bash
-terraform version
-aws --version
 aws sts get-caller-identity
 ```
 
-If AWS credentials are not configured:
-
-```bash
-aws configure
-```
-
-## Configuration
-
-Create the local variables file:
+## Configure
 
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Edit `terraform.tfvars`:
+Set the application CIDR to your public IP:
 
 ```hcl
-key_name         = "local_llm_aws_vm_key"
-allowed_ssh_cidr = "203.0.113.10/32"
 allowed_app_cidr = "203.0.113.10/32"
 ```
 
-Replace `203.0.113.10` with your public IPv4 address. The configuration only
-accepts `/24` or narrower CIDRs; `/32` is recommended.
+The validation accepts `/24` or narrower IPv4 CIDRs; `/32` is recommended.
+Important optional settings are:
 
-Required inputs:
+| Variable | Default | Purpose |
+|---|---:|---|
+| `deployment_mode` | `"native"` | Run in a Python venv or set `"docker"` |
+| `ollama_version` | `"0.32.0"` | Pin the bootstrap Ollama version |
+| `ollama_model` | `"llama3.2:3b"` | Required primary model |
+| `additional_ollama_models` | five models | Optional models pulled with retries |
+| `repository_branch` | `"main"` | Branch cloned by cloud-init |
+| `repository_commit` | `null` | Optional immutable Git SHA to deploy |
+| `root_volume_size` | `100` | Encrypted gp3 size in GiB |
+| `enable_ssh` | `false` | Create a key and open restricted TCP 22 |
+| `force_destroy_skip_os_shutdown` | `false` | Opt in to fast, unsafe termination |
 
-| Variable | Description |
-|---|---|
-| `allowed_ssh_cidr` | Trusted CIDR allowed to access TCP port 22 |
-| `allowed_app_cidr` | Trusted CIDR allowed to access TCP port 8501 |
-
-Useful optional inputs:
-
-| Variable | Default |
-|---|---|
-| `key_name` | `local_llm_aws_vm_key` |
-| `aws_region` | `ap-south-1` |
-| `instance_type` | `g4dn.xlarge` |
-| `root_volume_size` | `100` GiB |
-| `repository_url` | This project's public GitHub URL |
-| `repository_branch` | `main` |
-| `ollama_model` | `llama3.2:3b` |
-| `additional_ollama_models` | Five additional compact models |
-| `vpc_cidr` | `10.20.0.0/16` |
-| `public_subnet_cidr` | `10.20.1.0/24` |
-
-The region and instance type are intentionally validated as `ap-south-1` and
+The region and instance type are deliberately restricted to `ap-south-1` and
 `g4dn.xlarge`.
+
+## Optional remote state
+
+Local state is appropriate only for an individual test deployment. For shared
+or durable environments, create an S3 state bucket with versioning enabled,
+copy `backend.tf.example` to `backend.tf`, replace the bucket name, and run:
+
+```bash
+terraform init -migrate-state
+```
+
+The example enables encryption and S3 native state locking. `backend.tf` and
+`backend.hcl` are ignored so environment-specific settings are not committed.
 
 ## Deploy
 
-Initialize and validate the configuration:
-
 ```bash
-terraform init -upgrade
+terraform init
 terraform fmt -check
 terraform validate
-```
-
-Review the proposed infrastructure:
-
-```bash
 terraform plan -out=tfplan
+terraform apply tfplan
+./wait_for_application.sh
 ```
 
-Create the resources:
+Cloud-init installs Ollama, downloads the primary model and five optional
+models, clones this repository, installs the application, and starts a systemd
+service. This normally takes several minutes; model registry speed is the
+largest variable. `wait_for_application.sh` waits for Streamlit's health
+endpoint for up to 30 minutes by default and reports an explicit bootstrap
+failure found in EC2 console output. Supply a different timeout in seconds when
+needed:
 
 ```bash
-terraform apply tfplan
+./wait_for_application.sh 2400
 ```
 
-Terraform creates `<key_name>.pem` in this directory with file mode `0600`.
-Do not commit that key, `terraform.tfvars`, state files, or plan files. They are
-excluded by the Terraform directory's `.gitignore`.
+Watch bootstrap progress after the instance registers with Session Manager:
 
-## Access the application
+```bash
+$(terraform output -raw ssm_session_command)
+sudo tail -f /var/log/cloud-init-output.log
+```
 
-Display the application URL:
+Then open:
 
 ```bash
 terraform output -raw streamlit_url
 ```
 
-Bootstrap can take several minutes because the instance installs Ollama,
-installs Python packages, and downloads the configured models.
-
-The default model set is:
-
-```text
-llama3.2:3b
-qwen3:4b
-gemma3:4b
-phi4-mini:3.8b
-deepseek-r1:7b
-mistral:7b
-```
-
-These models require roughly 20 GB of storage in total. Download time depends
-on the instance's network throughput and the Ollama registry.
-
-Display the public IP:
+Useful checks on the instance:
 
 ```bash
-terraform output -raw public_ip
-```
-
-Display the generated private-key path and SSH command:
-
-```bash
-terraform output -raw private_key_path
-terraform output -raw ssh_command
-```
-
-Connect using the generated private key:
-
-```bash
-ssh -i ./local_llm_aws_vm_key.pem ubuntu@$(terraform output -raw public_ip)
-```
-
-## Verify the instance
-
-Check cloud-init and the application services:
-
-```bash
-sudo tail -f /var/log/cloud-init-output.log
-sudo systemctl status ollama
-sudo systemctl status local-ai-assistant
+sudo cat /var/lib/local-ai-assistant/bootstrap-complete
+sudo local-ai-assistant-health
+nvidia-smi
+ollama list
+sudo systemctl status ollama local-ai-assistant
 sudo journalctl -u local-ai-assistant -f
 ```
 
-Verify the GPU and installed Ollama model:
+The bootstrap writes one of these markers:
+
+- `/var/lib/local-ai-assistant/bootstrap-complete` after the application health
+  endpoint succeeds.
+- `/var/lib/local-ai-assistant/bootstrap-failed` when cloud-init exits with an
+  error. The complete command output remains in
+  `/var/log/cloud-init-output.log`.
+
+From the Terraform host, the copy-paste health command is:
 
 ```bash
-nvidia-smi
-ollama list
+terraform output -raw application_health_check_command
+$(terraform output -raw application_health_check_command)
 ```
 
-The application service starts automatically after reboots.
+## Runtime modes
 
-## Apply configuration changes
+`native` creates a Python virtual environment and runs Streamlit directly.
+`docker` builds the repository Dockerfile and runs the container with host
+networking so it can reach Ollama without exposing port `11434`.
 
-After editing a Terraform file or `terraform.tfvars`:
+```hcl
+deployment_mode = "docker"
+```
+
+Changing user data, including the runtime mode, replaces the EC2 instance.
+
+## Optional SSH
+
+Session Manager is the default and does not require inbound port 22 or an SSH
+private key in Terraform state. If SSH is necessary:
+
+```hcl
+enable_ssh       = true
+allowed_ssh_cidr = "203.0.113.10/32"
+key_name         = "local_llm_aws_vm_key"
+```
+
+Terraform then creates `local_llm_aws_vm_key.pem` with mode `0600`:
 
 ```bash
-terraform fmt
-terraform validate
-terraform plan -out=tfplan
-terraform apply tfplan
+terraform output -raw ssh_command
 ```
 
-Changes to EC2 user data replace the instance because
-`user_data_replace_on_change` is enabled.
-
-## Troubleshooting
-
-### No matching `g4dn.xlarge` capacity
-
-Check the EC2 service quota for running On-Demand G and VT instances in
-`ap-south-1`. A quota increase may be required. Temporary AWS capacity errors
-can also require retrying later.
-
-### Key-pair name already exists
-
-Terraform creates the EC2 key pair. If AWS reports
-`InvalidKeyPair.Duplicate`, select a different `key_name` and apply again.
-List existing regional key pairs with:
-
-```bash
-aws ec2 describe-key-pairs --region ap-south-1
-```
-
-### Cannot open Streamlit
-
-Confirm that:
-
-- `allowed_app_cidr` contains your current public IP.
-- Cloud-init completed successfully.
-- `local-ai-assistant.service` is active.
-- Port `8501` is listening.
-
-```bash
-sudo ss -lntp | grep 8501
-```
-
-### Repository clone failed
-
-The default bootstrap supports a public HTTPS Git repository. A private
-repository requires a separate secure authentication mechanism; do not place a
-personal access token directly in Terraform variables because it would be
-stored in Terraform state.
-
-## Cost and security notes
-
-- `g4dn.xlarge`, EBS storage, and public IPv4 usage incur AWS charges.
-- Stop or destroy unused GPU instances.
-- The generated SSH private key is stored unencrypted in Terraform state.
-- Protect the state with encrypted storage and strict access controls.
-- The generated TLS key approach is intended for bootstrapping; use your
-  organization's managed SSH key process for a production environment.
-- Do not change either ingress CIDR to `0.0.0.0/0`.
-- Add authentication, TLS, and a reverse proxy before supporting broader use.
+The key is ignored by Git but its private material is still present in
+Terraform state. Protect and encrypt the state backend.
 
 ## Destroy
 
-Preview the deletion:
-
-```bash
-terraform plan -destroy
-```
-
-The EC2 instance has a destroy-time hook that runs:
-
-```bash
-aws ec2 terminate-instances \
-  --region ap-south-1 \
-  --instance-ids <instance-id> \
-  --force \
-  --skip-os-shutdown \
-  --no-cli-pager
-```
-
-This uses EC2 force termination together with the new skip-OS-shutdown mode.
-It bypasses the instance's graceful operating-system shutdown and can discard
-unflushed data or in-flight I/O. The AWS CLI command must succeed before
-Terraform continues destroying the remaining infrastructure.
-
-Terraform still waits for AWS to report the instance as fully terminated
-before deleting dependent networking resources. Force termination can reduce
-that wait, but it cannot eliminate AWS control-plane and dependency cleanup
-time.
-
-Delete all infrastructure created by this stack:
+Graceful EC2 termination is the safe default:
 
 ```bash
 terraform destroy
 ```
 
-This removes the instance, root volume, security group, subnet, route table,
-internet gateway, and VPC.
+AWS can take several minutes to finish instance and network cleanup. To bypass
+the OS shutdown on a disposable instance, set:
+
+```hcl
+force_destroy_skip_os_shutdown = true
+```
+
+The destroy hook then calls `terminate-instances --force
+--skip-os-shutdown`. This may lose in-flight writes or skip shutdown handlers,
+and Terraform may still wait briefly for AWS to report resource deletion.
+
+## Security notes
+
+- Port `8501` has no application authentication or TLS; restrict its CIDR.
+- Port `22` is closed unless explicitly enabled.
+- IMDSv2 is required.
+- The root EBS volume is encrypted and deleted with the instance.
+- Model and package downloads require outbound internet access.
+- `terraform.tfvars`, state, plans, generated keys, and backend settings are
+  excluded from Git.

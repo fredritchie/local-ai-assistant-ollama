@@ -31,9 +31,10 @@ variable "public_subnet_cidr" {
 variable "allowed_ssh_cidr" {
   description = "Trusted public IPv4 CIDR allowed to SSH, normally YOUR_IP/32."
   type        = string
+  default     = null
 
   validation {
-    condition = (
+    condition = var.allowed_ssh_cidr == null || (
       can(cidrnetmask(var.allowed_ssh_cidr)) &&
       can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/(2[4-9]|3[0-2])$", var.allowed_ssh_cidr))
     )
@@ -65,6 +66,12 @@ variable "key_name" {
   }
 }
 
+variable "enable_ssh" {
+  description = "Whether to create an SSH key and allow trusted SSH ingress."
+  type        = bool
+  default     = false
+}
+
 variable "instance_type" {
   description = "EC2 GPU instance type."
   type        = string
@@ -91,12 +98,64 @@ variable "repository_url" {
   description = "Public HTTPS Git repository cloned onto the instance."
   type        = string
   default     = "https://github.com/fredritchie/local-ai-assistant-ollama.git"
+
+  validation {
+    condition     = can(regex("^https://[^[:space:]\"']+$", var.repository_url))
+    error_message = "repository_url must be a public HTTPS URL without whitespace or quotes."
+  }
 }
 
 variable "repository_branch" {
   description = "Git branch deployed onto the instance."
   type        = string
   default     = "main"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._/-]+$", var.repository_branch))
+    error_message = "repository_branch contains unsupported characters."
+  }
+}
+
+variable "repository_commit" {
+  description = "Optional immutable Git commit to deploy after cloning the branch."
+  type        = string
+  default     = null
+
+  validation {
+    condition = (
+      var.repository_commit == null ||
+      can(regex("^[0-9a-fA-F]{7,40}$", var.repository_commit))
+    )
+    error_message = "repository_commit must be null or a 7-to-40-character Git SHA."
+  }
+}
+
+variable "deployment_mode" {
+  description = "Application runtime: native systemd process or Docker container."
+  type        = string
+  default     = "native"
+
+  validation {
+    condition     = contains(["native", "docker"], var.deployment_mode)
+    error_message = "deployment_mode must be either native or docker."
+  }
+}
+
+variable "ollama_version" {
+  description = "Pinned Ollama version installed during instance bootstrap."
+  type        = string
+  default     = "0.32.0"
+
+  validation {
+    condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.ollama_version))
+    error_message = "ollama_version must use semantic version format, such as 0.32.0."
+  }
+}
+
+variable "force_destroy_skip_os_shutdown" {
+  description = "Force EC2 termination and skip OS shutdown during destroy."
+  type        = bool
+  default     = false
 }
 
 variable "ollama_model" {

@@ -82,7 +82,7 @@ install_ollama() {
                     exit 1
                 fi
             fi
-            curl -fsSL https://ollama.com/install.sh | sh
+            curl -fsSL https://ollama.com/install.sh | OLLAMA_VERSION="$OLLAMA_VERSION" sh
             ;;
         *)
             echo "Automatic Ollama installation is supported on Linux and macOS." >&2
@@ -92,6 +92,11 @@ install_ollama() {
 }
 
 PYTHON_COMMAND=""
+VENV_DIR=".venv"
+DEFAULT_MODEL="${DEFAULT_MODEL:-llama3.2:3b}"
+OLLAMA_VERSION="${OLLAMA_VERSION:-0.32.0}"
+OLLAMA_PID=""
+OLLAMA_LOG="${TMPDIR:-/tmp}/local-ai-assistant-ollama.log"
 
 if ! find_python; then
     install_python
@@ -109,11 +114,6 @@ if ! command -v ollama >/dev/null 2>&1; then
     echo "Ollama installation did not provide an ollama command." >&2
     exit 1
 fi
-
-VENV_DIR=".venv"
-DEFAULT_MODEL="${DEFAULT_MODEL:-llama3.2:3b}"
-OLLAMA_PID=""
-OLLAMA_LOG="${TMPDIR:-/tmp}/local-ai-assistant-ollama.log"
 
 cleanup() {
     if [[ -n "$OLLAMA_PID" ]] && kill -0 "$OLLAMA_PID" >/dev/null 2>&1; then

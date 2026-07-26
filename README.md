@@ -1,914 +1,220 @@
 # Local AI Assistant with Ollama
 
-A local, privacy-friendly AI chat application built with **Python**, **Streamlit**, and **Ollama**.
+A Streamlit chat application that runs against a local Ollama server. It
+supports streamed replies, model selection, temperature control, bounded
+session history, Docker packaging, and a Terraform deployment for an AWS GPU
+instance.
 
-This project demonstrates how a frontend application communicates with a locally running large language model, streams generated responses, preserves conversation history for the active session, switches between installed models, measures response time, and handles common runtime failures.
+![Repository and AWS architecture](docs/architecture.svg)
 
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [What This Repository Serves](#what-this-repository-serves)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Technology Stack](#technology-stack)
-- [Repository Structure](#repository-structure)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Running the Application](#running-the-application)
-- [Using the Application](#using-the-application)
-- [Configuration](#configuration)
-- [Running with Docker](#running-with-docker)
-- [Testing](#testing)
-- [How Conversation Memory Works](#how-conversation-memory-works)
-- [How Streaming Works](#how-streaming-works)
-- [Performance Notes](#performance-notes)
-- [Error Handling](#error-handling)
-- [Security and Privacy](#security-and-privacy)
-- [Troubleshooting](#troubleshooting)
-- [Known Limitations](#known-limitations)
-- [Learning Outcomes](#learning-outcomes)
-- [Future Improvements](#future-improvements)
-- [Completion Checklist](#completion-checklist)
-- [Resume-Ready Description](#resume-ready-description)
-- [License](#license)
-
----
-
-## Overview
-
-The application provides a browser-based chat interface for interacting with locally installed Ollama models.
-
-The model runs on your own machine. The Streamlit application sends messages to the Ollama API, receives the generated response as a stream, and displays it incrementally in the browser.
-
-The project is intentionally focused on the fundamentals of local LLM inference before moving to advanced topics such as RAG, vector databases, vLLM, Kubernetes, observability, and AI operations.
-
----
-
-## What This Repository Serves
-
-This repository serves a local AI assistant accessible through a web browser.
-
-It provides:
-
-- A Streamlit chat interface
-- Local LLM inference through Ollama
-- Streaming responses
-- Session-based conversation history
-- Dynamic model selection
-- Temperature control
-- Response-time display
-- Graceful error handling
-- Basic automated tests
-- Optional Docker packaging
-
-This project does **not** include:
-
-- RAG
-- PDF or document upload
-- Vector search
-- Persistent user accounts
-- Persistent chat storage
-- Authentication
-- Multi-user isolation
-- Distributed inference
-- Kubernetes deployment
-- Production-grade observability
-
----
-
-## Architecture
-
-```text
-+----------------------+
-|      Web Browser     |
-|    Streamlit Chat    |
-+----------+-----------+
-           |
-           | User prompt and chat history
-           v
-+----------------------+
-|      app.py          |
-| Streamlit UI logic   |
-+----------+-----------+
-           |
-           | Calls model client
-           v
-+----------------------+
-| ollama_client.py     |
-| Ollama API wrapper   |
-+----------+-----------+
-           |
-           | HTTP/API request
-           v
-+----------------------+
-|   Ollama Server      |
-| localhost:11434      |
-+----------+-----------+
-           |
-           | Loads selected model
-           v
-+----------------------+
-|      Local LLM       |
-| Llama / Qwen / Gemma |
-| Mistral / other      |
-+----------------------+
-```
-
-### Request flow
-
-```text
-User message
-    ↓
-Streamlit captures the prompt
-    ↓
-The application stores the message in session history
-    ↓
-The full relevant history is sent to Ollama
-    ↓
-Ollama generates a streamed response
-    ↓
-Streamlit displays text incrementally
-    ↓
-The final assistant response is stored in session history
-```
-
----
+See [the architecture guide](docs/architecture.md) for runtime and security
+details.
 
 ## Features
 
-### Core features
+- Local LLM inference through Ollama
+- Streaming Streamlit chat interface
+- Configurable model, endpoint, timeout, temperature, and history window
+- User-friendly Ollama connection errors
+- Native and Docker startup scripts
+- Automated tests, linting, shell checks, Terraform validation, and Docker
+  build checks in GitHub Actions
+- Terraform-managed `g4dn.xlarge` in a new `ap-south-1` VPC
+- Session Manager access by default, with optional restricted SSH
 
-- Local chat interface
-- Local model inference
-- Streaming responses
-- Conversation history
-- Clear-chat button
-- Model selection
-- Temperature control
-- Response-time display
-- Human-readable error messages
-
-### Engineering features
-
-- Modular Ollama client
-- Centralized configuration
-- Environment variable support
-- Virtual environment support
-- Pytest-based tests
-- Dockerfile
-- Clean repository structure
-
----
-
-## Technology Stack
-
-| Component | Technology |
-|---|---|
-| Language | Python |
-| Web UI | Streamlit |
-| Model runtime | Ollama |
-| Model communication | Ollama Python client |
-| Testing | Pytest |
-| Containerization | Docker |
-| Infrastructure as Code | Terraform |
-| Cloud platform | AWS EC2 |
-| Version control | Git |
-
----
-
-## Repository Structure
+## Repository structure
 
 ```text
-local-ai-assistant-ollama/
+.
 ├── app.py
-├── ollama_client.py
 ├── config.py
+├── ollama_client.py
 ├── requirements.txt
+├── requirements-dev.txt
+├── pyproject.toml
 ├── Dockerfile
 ├── server_script.sh
 ├── docker_setup.sh
-├── README.md
-├── .gitignore
+├── examples/
+│   └── chat_cli.py
+├── tests/
+│   ├── test_config.py
+│   └── test_ollama_client.py
+├── docs/
+│   ├── architecture.md
+│   └── architecture.svg
 ├── terraform/
 │   ├── main.tf
 │   ├── variables.tf
 │   ├── outputs.tf
 │   ├── versions.tf
 │   ├── user_data.sh.tftpl
+│   ├── wait_for_application.sh
+│   ├── backend.tf.example
 │   ├── terraform.tfvars.example
 │   └── README.md
-├── tests/
-│   └── test_ollama_client.py
-└── screenshots/
-    ├── chat-interface.png
-    ├── model-selection.png
-    ├── response-time.png
-    └── ollama-offline-error.png
+└── .github/workflows/ci.yml
 ```
 
-### File responsibilities
+## Quick start
 
-#### `app.py`
-
-Responsible for:
-
-- Rendering the Streamlit interface
-- Accepting user prompts
-- Displaying previous messages
-- Streaming assistant responses
-- Handling model and temperature settings
-- Clearing chat history
-- Displaying timing information
-- Showing user-friendly errors
-
-#### `ollama_client.py`
-
-Responsible for:
-
-- Listing installed models
-- Sending chat messages to Ollama
-- Streaming generated response chunks
-- Converting low-level exceptions into readable application errors
-
-#### `config.py`
-
-Stores configurable values such as:
-
-- Ollama API address
-- Default model
-- Request timeout
-- Default temperature
-
-#### `tests/test_ollama_client.py`
-
-Contains unit tests for the Ollama client.
-
-#### `screenshots/`
-
-Stores images used in this README.
-
----
-
-## Prerequisites
-
-Install the following before running the project:
-
-- Python 3.11 or later
-- Git
-- Ollama
-- At least one Ollama model
-
-Optional:
-
-- Docker
-- Docker Desktop
-
-Check installed versions:
+Install [Ollama](https://ollama.com), then run:
 
 ```bash
-python3 --version
-git --version
-ollama --version
-docker --version
-```
-
----
-
-## Installation
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/<your-username>/local-ai-assistant-ollama.git
+git clone https://github.com/fredritchie/local-ai-assistant-ollama.git
 cd local-ai-assistant-ollama
+./server_script.sh
 ```
 
-Replace `<your-username>` with your GitHub username.
+The script installs Python when needed, creates `.venv`, installs Python
+dependencies, installs and starts Ollama when needed, pulls the default model,
+and starts Streamlit. Git clone or pull is intentionally left to the operator.
 
-### 2. Create a virtual environment
+Open `http://localhost:8501`.
 
-#### Linux or macOS
+To run each step manually:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-#### Windows PowerShell
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-#### Windows Command Prompt
-
-```cmd
-python -m venv .venv
-.venv\Scripts\activate.bat
-```
-
-### 3. Upgrade pip
-
-```bash
-python -m pip install --upgrade pip
-```
-
-### 4. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 5. Pull a model
-
-Recommended starter model:
-
-```bash
-ollama pull llama3.2:3b
-```
-
-Other examples:
-
-```bash
-ollama pull qwen2.5:3b
-ollama pull gemma3:4b
-ollama pull mistral
-```
-
-List installed models:
-
-```bash
-ollama list
-```
-
-### 6. Test Ollama from the terminal
-
-```bash
-ollama run llama3.2:3b
-```
-
-Example prompt:
-
-```text
-Explain Kubernetes in three lines.
-```
-
-Exit:
-
-```text
-/bye
-```
-
----
-
-## Running the Application
-
-### 1. Start Ollama
-
-Ollama usually starts automatically.
-
-When needed, run:
-
-```bash
+python -m pip install -r requirements.txt
 ollama serve
-```
-
-Default API endpoint:
-
-```text
-http://localhost:11434
-```
-
-### 2. Start Streamlit
-
-From the repository root:
-
-```bash
+ollama pull llama3.2:3b
 streamlit run app.py
 ```
 
-The application normally opens at:
-
-```text
-http://localhost:8501
-```
-
-If the browser does not open automatically, copy the local URL shown in the terminal.
-
----
-
-## Using the Application
-
-### Send a prompt
-
-Example:
-
-```text
-What is model inference?
-```
-
-### Test conversation memory
-
-Send:
-
-```text
-My name is Fredrick.
-```
-
-Then send:
-
-```text
-What is my name?
-```
-
-The model should answer correctly because the application sends the earlier conversation along with the new request.
-
-### Switch models
-
-Install another model:
-
-```bash
-ollama pull qwen2.5:3b
-```
-
-Refresh the app and select it from the sidebar.
-
-### Adjust temperature
-
-Lower temperature:
-
-```text
-0.1 to 0.3
-```
-
-Usually gives more consistent responses.
-
-Higher temperature:
-
-```text
-0.8 to 1.2
-```
-
-Usually gives more varied responses.
-
-### Clear chat
-
-Use the **Clear chat** button in the sidebar.
-
----
+Run `ollama serve` in a separate terminal if it is not already running as a
+service.
 
 ## Configuration
 
-Example `config.py`:
+Export settings before starting the app:
 
-```python
-import os
-
-OLLAMA_BASE_URL = os.getenv(
-    "OLLAMA_BASE_URL",
-    "http://localhost:11434",
-)
-
-DEFAULT_MODEL = os.getenv(
-    "DEFAULT_MODEL",
-    "llama3.2:3b",
-)
-
-REQUEST_TIMEOUT_SECONDS = int(
-    os.getenv("REQUEST_TIMEOUT_SECONDS", "120")
-)
-
-DEFAULT_TEMPERATURE = float(
-    os.getenv("DEFAULT_TEMPERATURE", "0.7")
-)
-```
-
-### Supported environment variables
-
-| Variable | Default | Purpose |
-|---|---|---|
+| Variable | Default | Description |
+|---|---:|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `DEFAULT_MODEL` | `llama3.2:3b` | Default selected model |
-| `REQUEST_TIMEOUT_SECONDS` | `120` | Request timeout |
-| `DEFAULT_TEMPERATURE` | `0.7` | Default generation temperature |
+| `DEFAULT_MODEL` | `llama3.2:3b` | Initially selected model |
+| `DEFAULT_TEMPERATURE` | `0.7` | Initial sampling temperature |
+| `REQUEST_TIMEOUT_SECONDS` | `120` | Ollama request timeout |
+| `MAX_HISTORY_MESSAGES` | `20` | Most recent messages sent per request |
+| `OLLAMA_VERSION` | `0.32.0` | Linux installer version used by scripts |
 
 Example:
 
 ```bash
-export DEFAULT_MODEL=qwen2.5:3b
-export DEFAULT_TEMPERATURE=0.3
-streamlit run app.py
+export DEFAULT_MODEL=qwen3:4b
+export MAX_HISTORY_MESSAGES=20
+./server_script.sh
 ```
 
----
+Conversation messages remain in Streamlit session state for the browser
+session, but only the configured recent window is sent to Ollama.
 
-## Running with Docker
+## Docker
 
-### Important networking note
+The setup script installs Docker and Ollama when needed, pulls the default
+model, builds the image, and runs it:
 
-Inside a container, `localhost` refers to the container itself.
+```bash
+./docker_setup.sh
+```
 
-If Ollama runs on your host machine:
-
-- macOS and Windows typically use `host.docker.internal`
-- Linux can use host networking
-
-### Build the image
+Or build and run manually on Linux:
 
 ```bash
 docker build -t local-ai-assistant .
+docker run --rm --network host \
+  -e OLLAMA_BASE_URL=http://localhost:11434 \
+  -e DEFAULT_MODEL=llama3.2:3b \
+  local-ai-assistant
 ```
 
-### Run on macOS or Windows
+On Docker Desktop:
 
 ```bash
-docker run --rm   -p 8501:8501   -e OLLAMA_BASE_URL=http://host.docker.internal:11434   local-ai-assistant
+docker run --rm -p 8501:8501 \
+  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  local-ai-assistant
 ```
 
-### Run on Linux
+The image runs as a non-root user and includes a Streamlit health check.
+
+## AWS deployment
+
+The Terraform stack creates a new VPC and a `g4dn.xlarge` EC2 instance in
+`ap-south-1`. Session Manager is enabled by default, so port 22 and an SSH key
+are not required.
 
 ```bash
-docker run --rm   --network host   -e OLLAMA_BASE_URL=http://localhost:11434   local-ai-assistant
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+# Set allowed_app_cidr to your public IPv4 address with /32.
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
+./wait_for_application.sh
 ```
 
-Open:
+The application can run natively or as a Docker container:
 
-```text
-http://localhost:8501
+```hcl
+deployment_mode = "docker"
 ```
 
----
+For all variables, optional SSH, remote state, bootstrap monitoring, and
+destroy behavior, read the [Terraform guide](terraform/README.md).
 
-## Testing
-
-Run all tests:
+## Development
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+ruff check .
 pytest -v
 ```
 
-Suggested test coverage:
-
-- Installed model listing
-- Ollama connection errors
-- Model-not-found behavior
-- Response streaming logic
-- Configuration values
-
-Example test:
-
-```python
-from unittest.mock import MagicMock, patch
-
-from ollama_client import list_models
-
-
-@patch("ollama_client.ollama.list")
-def test_list_models(mock_list: MagicMock) -> None:
-    model = MagicMock()
-    model.model = "llama3.2:3b"
-
-    response = MagicMock()
-    response.models = [model]
-
-    mock_list.return_value = response
-
-    assert list_models() == ["llama3.2:3b"]
-```
-
----
-
-## How Conversation Memory Works
-
-The model does not permanently remember previous application requests.
-
-The application stores messages in Streamlit session state:
-
-```python
-[
-    {
-        "role": "user",
-        "content": "My name is Fredrick."
-    },
-    {
-        "role": "assistant",
-        "content": "Nice to meet you, Fredrick."
-    },
-    {
-        "role": "user",
-        "content": "What is my name?"
-    }
-]
-```
-
-The relevant history is sent with every new request.
-
-This means:
-
-- Memory exists only because the app resends previous messages
-- Restarting the app clears in-memory history
-- Long histories increase context size
-- Very long histories may later require trimming or summarization
-
----
-
-## How Streaming Works
-
-Without streaming:
-
-```text
-Prompt
-→ wait for full generation
-→ display complete response
-```
-
-With streaming:
-
-```text
-Prompt
-→ receive partial chunks
-→ display chunks incrementally
-→ complete response
-```
-
-Streaming improves perceived responsiveness.
-
-The displayed response time is not the same as:
-
-- Time to first token
-- Tokens per second
-- Queue time
-- Model load time
-
-Those metrics can be added later.
-
----
-
-## Performance Notes
-
-Compare models using a simple table:
-
-| Model | First response time | Total response time | Quality | Memory observation |
-|---|---:|---:|---|---|
-| `llama3.2:3b` | Add result | Add result | Add result | Add result |
-| `qwen2.5:3b` | Add result | Add result | Add result | Add result |
-| `gemma3:4b` | Add result | Add result | Add result | Add result |
-
-Common observations:
-
-- Larger models usually need more memory
-- Longer prompts increase processing time
-- Longer responses increase total latency
-- The first request may be slower because the model is loading
-- Quantized models reduce memory usage
-- Temperature affects output variation, not model knowledge
-
----
-
-## Error Handling
-
-The application should handle:
-
-- Ollama not running
-- No models installed
-- Selected model missing
-- Request timeout
-- Empty input
-- Unexpected API response
-- Very long conversation history
-
-Example message:
-
-```text
-Unable to connect to Ollama. Confirm that the Ollama service is running.
-```
-
-The UI should show the error without crashing.
-
----
-
-## Security and Privacy
-
-### Privacy advantages
-
-- Prompts can remain on the local machine
-- No hosted inference API is required
-- Model execution is local
-- Useful for private experimentation
-
-### Current security limitations
-
-- No authentication
-- No authorization
-- No TLS
-- No multi-user isolation
-- No audit logging
-- No secrets manager integration
-
-Do not expose the current application directly to the public internet.
-
----
+The tests mock Ollama and do not require a running model server. A minimal CLI
+example is available at `examples/chat_cli.py`.
 
 ## Troubleshooting
 
-### `ollama: command not found`
-
-Check installation:
-
-```bash
-ollama --version
-```
-
-Restart the terminal after installing Ollama.
-
-### Cannot connect to Ollama
-
-Check the API:
-
-```bash
-curl http://localhost:11434/api/tags
-```
-
-Start Ollama:
-
-```bash
-ollama serve
-```
-
-### Model not found
-
-List models:
+Check Ollama:
 
 ```bash
 ollama list
+curl http://localhost:11434/api/tags
 ```
 
-Pull the required model:
+If no model is present:
 
 ```bash
 ollama pull llama3.2:3b
 ```
 
-### `streamlit: command not found`
-
-Activate the virtual environment:
+On EC2, inspect bootstrap and services:
 
 ```bash
-source .venv/bin/activate
+sudo tail -f /var/log/cloud-init-output.log
+sudo systemctl status ollama local-ai-assistant
+sudo journalctl -u local-ai-assistant -f
 ```
 
-Install dependencies:
+If Terraform reports insufficient capacity or quota, request a
+`g4dn.xlarge` On-Demand quota increase or retry an Availability Zone where the
+instance type is offered.
 
-```bash
-pip install -r requirements.txt
-```
+## Security and limitations
 
-### Docker cannot reach Ollama
-
-On macOS or Windows:
-
-```text
-http://host.docker.internal:11434
-```
-
-On Linux:
-
-```bash
-docker run --network host ...
-```
-
-### First response is slow
-
-Possible reasons:
-
-- Model loading
-- CPU-only inference
-- Model too large for available memory
-- Long prompt
-- Resource pressure
-
-Try a smaller model.
-
-### Long chats become slow
-
-Possible improvements:
-
-- Limit stored history
-- Remove older turns
-- Summarize older messages
-- Enforce a context budget
-
----
-
-## Known Limitations
-
-- Session-only chat history
-- No persistent database
-- No authentication
-- No RAG
-- No document upload
-- No token count
-- No production metrics
-- No tracing
-- No rate limiting
-- No autoscaling
-- No multi-user support
-- No guardrails
-- No evaluation framework
-
----
-
-## Learning Outcomes
-
-After completing the project, you should be able to explain:
-
-1. Ollama is a local model runtime and API server.
-2. Ollama is not the LLM itself.
-3. Streamlit is the application layer.
-4. Conversation history must be sent again for context.
-5. LLM memory is application-managed.
-6. Streaming improves perceived responsiveness.
-7. Temperature affects output randomness.
-8. Model size affects memory, latency, and quality.
-9. The first request may include model-loading overhead.
-10. Ollama hides low-level tokenization and inference details.
-11. This project is not RAG.
-12. Total latency differs from time to first token.
-
----
-
-## Future Improvements
-
-### Application
-
-- Persistent conversations
-- Chat export
-- Stop-generation button
-- Prompt templates
-- System prompt editor
-- Token statistics
-- Context-window management
-
-### Platform
-
-- FastAPI backend
-- Prometheus metrics
-- Structured JSON logs
-- Request IDs
-- OpenTelemetry tracing
-- Authentication
-- Rate limiting
-- Health and readiness endpoints
-- Docker Compose
-- Kubernetes deployment
-
-### AI
-
-- RAG with Qdrant
-- Document upload
-- Embedding model integration
-- Source citations
-- RAG evaluation
-- Guardrails
-- Model routing
-- vLLM
-- KServe
-- Triton Inference Server
-
----
-
-## Completion Checklist
-
-- [ ] Ollama runs locally
-- [ ] At least one model is installed
-- [ ] Streamlit UI works
-- [ ] Responses stream correctly
-- [ ] Conversation history works
-- [ ] Clear-chat works
-- [ ] Model selection works
-- [ ] Temperature control works
-- [ ] Response time is displayed
-- [ ] Errors are handled
-- [ ] Tests pass
-- [ ] Docker image builds
-- [ ] README is complete
-- [ ] Architecture diagram is included
-- [ ] Screenshots are included
-- [ ] Repository is published to GitHub
-
----
-
-## Resume-Ready Description
-
-> Built a local AI assistant using Python, Streamlit, and Ollama with streamed model responses, session-based conversation history, dynamic model selection, configurable generation settings, latency reporting, automated tests, Docker support, and resilient error handling.
-
----
+- Chat history is session-only and is not multi-user isolated.
+- There is no built-in authentication or TLS.
+- Never expose Ollama port `11434` publicly.
+- Restrict AWS port `8501` to trusted CIDRs or place an authenticated TLS proxy
+  in front of the application.
+- Do not commit Terraform state, variable files, plan files, or generated keys.
+- Optional SSH keys are stored in Terraform state; Session Manager avoids this.
 
 ## License
 
-Add your preferred license before publishing.
-
-For a learning project, the MIT License is a common choice.
+No open-source license has been selected. Until a license file is added, the
+repository is not licensed for redistribution or modification by others.
