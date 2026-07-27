@@ -1,9 +1,12 @@
 allowed_app_cidr = "203.0.113.10/32"
 
+# Required by deploy_with_ansible.sh:
+# allowed_ssh_cidr = "203.0.113.10/32"
+
 # Optional overrides:
 # enable_ssh       = true
 # key_name         = "local_llm_aws_vm_key"
-# allowed_ssh_cidr = "203.0.113.10/32"
+# server_configuration = "cloud-init" # Valid values: cloud-init, ansible
 # repository_branch = "main"
 # repository_commit = "0123456789abcdef0123456789abcdef01234567"
 # deployment_mode   = "native" # Valid values: native, docker

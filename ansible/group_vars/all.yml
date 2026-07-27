@@ -1,0 +1,26 @@
+---
+app_repository_url: >-
+  https://github.com/fredritchie/local-ai-assistant-ollama.git
+app_repository_branch: main
+# Set a tag or commit SHA to deploy an immutable revision. An empty value uses
+# app_repository_branch.
+app_repository_version: ""
+
+app_user: local-ai-assistant
+app_group: local-ai-assistant
+app_install_dir: /opt/local-ai-assistant-ollama
+app_deployment_mode: native
+app_image_name: local-ai-assistant:latest
+
+ollama_version: 0.32.0
+ollama_primary_model: llama3.2:3b
+ollama_additional_models:
+  - qwen3:4b
+  - gemma3:4b
+  - phi4-mini:3.8b
+  - deepseek-r1:7b
+  - mistral:7b
+
+app_default_temperature: 0.7
+app_request_timeout_seconds: 120
+app_max_history_messages: 20

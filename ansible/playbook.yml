@@ -1,0 +1,8 @@
+---
+- name: Configure Local AI Assistant servers
+  hosts: app_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - local_ai_assistant

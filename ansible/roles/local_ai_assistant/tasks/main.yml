@@ -1,0 +1,254 @@
+---
+- name: Validate deployment variables
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == "Debian"
+      - app_deployment_mode in ["native", "docker"]
+      - app_repository_url is match("^https://")
+      - ollama_version is match("^[0-9]+\\.[0-9]+\\.[0-9]+$")
+      - ollama_primary_model is match("^[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?$")
+      - >-
+        ollama_additional_models
+        | reject("match", "^[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?$")
+        | list
+        | length == 0
+      - app_default_temperature | float >= 0
+      - app_default_temperature | float <= 1.5
+      - app_request_timeout_seconds | int >= 1
+      - app_max_history_messages | int >= 1
+    fail_msg: >-
+      Check the role variables. This role supports Debian-family systemd hosts
+      and native or docker deployment modes.
+    quiet: true
+
+- name: Install base operating system packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - git
+      - python3
+      - python3-pip
+      - python3-venv
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Docker for Docker deployment mode
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+  when: app_deployment_mode == "docker"
+
+- name: Enable Docker for Docker deployment mode
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  when: app_deployment_mode == "docker"
+
+- name: Read the installed Ollama version
+  ansible.builtin.command:
+    argv:
+      - ollama
+      - --version
+  register: ollama_version_result
+  changed_when: false
+  failed_when: false
+
+- name: Download the Ollama installer
+  ansible.builtin.get_url:
+    url: https://ollama.com/install.sh
+    dest: /tmp/ollama-install.sh
+    mode: "0755"
+  when: >-
+    ollama_version_result.rc != 0 or
+    ollama_version not in ollama_version_result.stdout
+
+- name: Install the configured Ollama version
+  ansible.builtin.command:
+    argv:
+      - /tmp/ollama-install.sh
+  environment:
+    OLLAMA_VERSION: "{{ ollama_version }}"
+  when: >-
+    ollama_version_result.rc != 0 or
+    ollama_version not in ollama_version_result.stdout
+  notify: Restart Ollama
+
+- name: Enable Ollama
+  ansible.builtin.systemd_service:
+    name: ollama
+    enabled: true
+    state: started
+
+- name: Apply Ollama changes before model configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the Ollama API
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 11434
+    delay: 1
+    timeout: 60
+
+- name: List installed Ollama models
+  ansible.builtin.command:
+    argv:
+      - ollama
+      - list
+  register: ollama_model_list
+  changed_when: false
+
+- name: Record installed Ollama model names
+  ansible.builtin.set_fact:
+    ollama_installed_models: >-
+      {{
+        ollama_model_list.stdout_lines[1:]
+        | map("regex_replace", "\\s+.*$", "")
+        | list
+      }}
+
+- name: Pull the primary Ollama model
+  ansible.builtin.command:
+    argv:
+      - ollama
+      - pull
+      - "{{ ollama_primary_model }}"
+  register: primary_model_pull
+  retries: 3
+  delay: 10
+  until: primary_model_pull.rc == 0
+  when: ollama_primary_model not in ollama_installed_models
+  notify: Restart Local AI Assistant
+
+- name: Pull additional Ollama models
+  ansible.builtin.command:
+    argv:
+      - ollama
+      - pull
+      - "{{ item }}"
+  loop: "{{ ollama_additional_models }}"
+  register: additional_model_pull
+  retries: 3
+  delay: 10
+  until: additional_model_pull.rc == 0
+  when: item not in ollama_installed_models
+
+- name: Create the application group
+  ansible.builtin.group:
+    name: "{{ app_group }}"
+    system: true
+    state: present
+
+- name: Create the application user
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    group: "{{ app_group }}"
+    home: "{{ app_install_dir }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+    system: true
+    state: present
+
+- name: Create the application directory
+  ansible.builtin.file:
+    path: "{{ app_install_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "0755"
+
+- name: Check out the application repository
+  become_user: "{{ app_user }}"
+  ansible.builtin.git:
+    repo: "{{ app_repository_url }}"
+    dest: "{{ app_install_dir }}"
+    version: "{{ app_repository_version | default(app_repository_branch, true) }}"
+    update: true
+  register: app_repository_checkout
+  notify: Restart Local AI Assistant
+
+- name: Create the native Python virtual environment
+  become_user: "{{ app_user }}"
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -m
+      - venv
+      - "{{ app_install_dir }}/.venv"
+    creates: "{{ app_install_dir }}/.venv/bin/python"
+  when: app_deployment_mode == "native"
+
+- name: Install native Python dependencies
+  become_user: "{{ app_user }}"
+  ansible.builtin.pip:
+    requirements: "{{ app_install_dir }}/requirements.txt"
+    virtualenv: "{{ app_install_dir }}/.venv"
+  when: app_deployment_mode == "native"
+  notify: Restart Local AI Assistant
+
+- name: Inspect the application container image
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - "{{ app_image_name }}"
+  register: app_image_inspect
+  changed_when: false
+  failed_when: false
+  when: app_deployment_mode == "docker"
+
+- name: Build the application container image
+  ansible.builtin.command:
+    argv:
+      - docker
+      - build
+      - --pull
+      - --tag
+      - "{{ app_image_name }}"
+      - "{{ app_install_dir }}"
+  when:
+    - app_deployment_mode == "docker"
+    - app_repository_checkout.changed or app_image_inspect.rc != 0
+  notify: Restart Local AI Assistant
+
+- name: Install the application systemd unit
+  ansible.builtin.template:
+    src: local-ai-assistant.service.j2
+    dest: /etc/systemd/system/local-ai-assistant.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart Local AI Assistant
+
+- name: Install the local application health command
+  ansible.builtin.copy:
+    src: local-ai-assistant-health
+    dest: /usr/local/bin/local-ai-assistant-health
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Apply application service changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the Local AI Assistant
+  ansible.builtin.systemd_service:
+    name: local-ai-assistant
+    enabled: true
+    state: started
+
+- name: Wait for the application health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8501/_stcore/health
+    method: GET
+    status_code: 200
+    return_content: false
+  register: app_health
+  retries: 60
+  delay: 5
+  until: app_health.status == 200
