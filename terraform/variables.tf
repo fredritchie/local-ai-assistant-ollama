@@ -72,6 +72,17 @@ variable "enable_ssh" {
   default     = false
 }
 
+variable "server_configuration" {
+  description = "Server configuration system: cloud-init bootstrap or external Ansible."
+  type        = string
+  default     = "cloud-init"
+
+  validation {
+    condition     = contains(["cloud-init", "ansible"], var.server_configuration)
+    error_message = "server_configuration must be either cloud-init or ansible."
+  }
+}
+
 variable "instance_type" {
   description = "EC2 GPU instance type."
   type        = string
@@ -142,7 +153,7 @@ variable "deployment_mode" {
 }
 
 variable "ollama_version" {
-  description = "Pinned Ollama version installed during instance bootstrap."
+  description = "Pinned Ollama version installed during server configuration."
   type        = string
   default     = "0.32.0"
 
@@ -159,7 +170,7 @@ variable "force_destroy_skip_os_shutdown" {
 }
 
 variable "ollama_model" {
-  description = "Primary Ollama model pulled during instance bootstrap."
+  description = "Primary Ollama model pulled during server configuration."
   type        = string
   default     = "llama3.2:3b"
 
@@ -170,7 +181,7 @@ variable "ollama_model" {
 }
 
 variable "additional_ollama_models" {
-  description = "Additional Ollama models pulled during instance bootstrap."
+  description = "Additional Ollama models pulled during server configuration."
   type        = list(string)
   default = [
     "qwen3:4b",

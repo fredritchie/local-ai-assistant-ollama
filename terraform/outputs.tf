@@ -33,6 +33,24 @@ output "deployment_mode" {
   value       = var.deployment_mode
 }
 
+output "server_configuration" {
+  description = "System responsible for configuring the EC2 instance."
+  value       = var.server_configuration
+}
+
+output "ansible_variables" {
+  description = "Application variables consumed by the Ansible deployment wrapper."
+  value = {
+    app_repository_url       = var.repository_url
+    app_repository_branch    = var.repository_branch
+    app_repository_version   = coalesce(var.repository_commit, "")
+    app_deployment_mode      = var.deployment_mode
+    ollama_version           = var.ollama_version
+    ollama_primary_model     = var.ollama_model
+    ollama_additional_models = var.additional_ollama_models
+  }
+}
+
 output "ssh_command" {
   description = "Example SSH command when optional SSH access is enabled."
   value       = var.enable_ssh ? "ssh -i ${local_sensitive_file.private_key[0].filename} ubuntu@${aws_instance.app.public_ip}" : null

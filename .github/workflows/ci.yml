@@ -36,6 +36,10 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+      - name: Validate Ansible
+        working-directory: ansible
+        run: ansible-playbook -i inventory.ini.example playbook.yml --syntax-check
+
       - name: Install ShellCheck
         run: |
           sudo apt-get update
@@ -43,7 +47,7 @@ jobs:
 
       - name: Check shell scripts
         run: |
-          shellcheck server_script.sh docker_setup.sh terraform/wait_for_application.sh
+          shellcheck server_script.sh docker_setup.sh deploy_with_ansible.sh terraform/wait_for_application.sh ansible/roles/local_ai_assistant/files/local-ai-assistant-health
           shellcheck -e SC2086,SC2154 terraform/user_data.sh.tftpl
 
       - name: Set up Terraform

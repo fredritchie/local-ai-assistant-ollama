@@ -3,7 +3,8 @@
 A Streamlit chat application that runs against a local Ollama server. It
 supports streamed replies, model selection, temperature control, bounded
 session history, Docker packaging, and a Terraform deployment for an AWS GPU
-instance.
+instance. An Ansible role provides repeatable server configuration for
+Debian-family hosts.
 
 ![Repository and AWS architecture](docs/architecture.svg)
 
@@ -17,8 +18,9 @@ details.
 - Configurable model, endpoint, timeout, temperature, and history window
 - User-friendly Ollama connection errors
 - Native and Docker startup scripts
-- Automated tests, linting, shell checks, Terraform validation, and Docker
-  build checks in GitHub Actions
+- Ansible-managed native or Docker server configuration
+- Automated tests, linting, shell checks, Ansible and Terraform validation,
+  and Docker build checks in GitHub Actions
 - Terraform-managed `g4dn.xlarge` in a new `ap-south-1` VPC
 - Session Manager access by default, with optional restricted SSH
 
@@ -35,6 +37,16 @@ details.
 ├── Dockerfile
 ├── server_script.sh
 ├── docker_setup.sh
+├── deploy_with_ansible.sh
+├── ansible/
+│   ├── ansible.cfg
+│   ├── inventory.ini.example
+│   ├── playbook.yml
+│   ├── group_vars/
+│   │   └── all.yml
+│   ├── roles/
+│   │   └── local_ai_assistant/
+│   └── README.md
 ├── examples/
 │   └── chat_cli.py
 ├── tests/
@@ -139,6 +151,51 @@ docker run --rm -p 8501:8501 \
 
 The image runs as a non-root user and includes a Streamlit health check.
 
+## Server configuration with Ansible
+
+The Ansible playbook idempotently configures a Debian-family systemd server. It
+installs a pinned Ollama version and requested models, checks out the selected
+application revision, runs the app natively or with Docker, installs the
+systemd services, and verifies the Streamlit health endpoint.
+
+```bash
+python -m pip install -r requirements-dev.txt
+cd ansible
+cp inventory.ini.example inventory.ini
+# Edit the target host, SSH user, and key in inventory.ini.
+ansible-playbook playbook.yml
+```
+
+Configuration defaults are in `ansible/group_vars/all.yml`. The generated
+inventory is ignored by Git. See the [Ansible guide](ansible/README.md) for
+variables, Docker mode, health checks, and use with a Terraform-created host.
+
+### Launch and configure AWS with one command
+
+Create `terraform/terraform.tfvars` and restrict both application and SSH
+access to your public address:
+
+```hcl
+allowed_app_cidr = "203.0.113.10/32"
+allowed_ssh_cidr = "203.0.113.10/32"
+```
+
+Then run from the repository root:
+
+```bash
+./deploy_with_ansible.sh
+```
+
+This one command initializes and applies Terraform, generates an ignored
+Ansible inventory from the Terraform outputs, records the new server's SSH
+host key, waits for connectivity, and runs the application role. Terraform
+shows its normal approval prompt before creating the billable `g4dn.xlarge`.
+For deliberate unattended deployment:
+
+```bash
+./deploy_with_ansible.sh -auto-approve
+```
+
 ## AWS deployment
 
 The Terraform stack creates a new VPC and a `g4dn.xlarge` EC2 instance in
@@ -172,6 +229,8 @@ source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 ruff check .
 pytest -v
+(cd ansible && \
+  ansible-playbook -i inventory.ini.example playbook.yml --syntax-check)
 ```
 
 The tests mock Ollama and do not require a running model server. A minimal CLI

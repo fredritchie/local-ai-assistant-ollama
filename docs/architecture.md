@@ -1,7 +1,7 @@
 # Architecture
 
-The same application runs locally, inside Docker, or on a Terraform-managed AWS
-GPU instance.
+The same application runs locally, inside Docker, on an Ansible-managed
+Debian-family server, or on a Terraform-managed AWS GPU instance.
 
 ![Repository and AWS architecture](architecture.svg)
 
@@ -25,7 +25,7 @@ security group, IAM instance profile, encrypted gp3 volume, and a
 `g4dn.xlarge`. The instance uses AWS's current Ubuntu 24.04 CUDA Deep Learning
 AMI from the public SSM parameter.
 
-Cloud-init then:
+In the default `server_configuration = "cloud-init"` mode, cloud-init then:
 
 1. Installs base packages and the pinned Ollama version.
 2. Starts Ollama and pulls the required model with retries.
@@ -36,6 +36,24 @@ Cloud-init then:
 6. Waits for Streamlit's health endpoint and writes a completion marker. Any
    failed bootstrap writes a failure marker and an identifiable console-log
    message.
+
+## Ansible configuration path
+
+The Ansible role applies the same server contract to an existing
+Debian-family systemd host:
+
+1. Installs base packages and the configured Ollama version.
+2. Starts Ollama and pulls the requested models.
+3. Checks out a branch, tag, or immutable commit under `/opt`.
+4. Configures either a dedicated-user Python virtual environment or a Docker
+   container.
+5. Installs and starts the `local-ai-assistant` systemd service.
+6. Verifies Streamlit through its loopback health endpoint.
+
+The role is independently usable. The `deploy_with_ansible.sh` path asks
+Terraform to omit application user data, enables CIDR-restricted SSH, generates
+an ignored inventory from Terraform outputs, and makes Ansible the sole server
+configuration mechanism.
 
 ## Trust boundaries
 

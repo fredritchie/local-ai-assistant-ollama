@@ -16,6 +16,7 @@ bound to `localhost:11434`.
 - `g4dn.xlarge` On-Demand quota in `ap-south-1`
 - A public HTTPS Git repository that the instance can clone
 - AWS CLI and the Session Manager plugin for shell access
+- Ansible Core and OpenSSH when using the combined Ansible deployment
 
 Check your identity before deploying:
 
@@ -41,6 +42,7 @@ Important optional settings are:
 
 | Variable | Default | Purpose |
 |---|---:|---|
+| `server_configuration` | `"cloud-init"` | Configure with cloud-init or external Ansible |
 | `deployment_mode` | `"native"` | Run in a Python venv or set `"docker"` |
 | `ollama_version` | `"0.32.0"` | Pin the bootstrap Ollama version |
 | `ollama_model` | `"llama3.2:3b"` | Required primary model |
@@ -53,6 +55,42 @@ Important optional settings are:
 
 The region and instance type are deliberately restricted to `ap-south-1` and
 `g4dn.xlarge`.
+
+## One-command Terraform and Ansible deployment
+
+From the repository root, install the development requirements and create the
+Terraform variable file once:
+
+```bash
+python -m pip install -r requirements-dev.txt
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+```
+
+Set trusted `/32` CIDRs for the application and Ansible SSH connection:
+
+```hcl
+allowed_app_cidr = "203.0.113.10/32"
+allowed_ssh_cidr = "203.0.113.10/32"
+```
+
+Launch the VM and configure it:
+
+```bash
+./deploy_with_ansible.sh
+```
+
+The script forces `server_configuration = "ansible"` and `enable_ssh = true`,
+applies Terraform, generates ignored Ansible connection files, waits for SSH,
+and runs the role. Terraform retains its normal interactive approval. Use this
+only when unattended creation is intended:
+
+```bash
+./deploy_with_ansible.sh -auto-approve
+```
+
+The first SSH host key seen for the newly allocated address is stored in the
+ignored `ansible/known_hosts.terraform` file and is required for the subsequent
+Ansible connection.
 
 ## Optional remote state
 
@@ -80,11 +118,11 @@ terraform apply tfplan
 
 Cloud-init installs Ollama, downloads the primary model and five optional
 models, clones this repository, installs the application, and starts a systemd
-service. This normally takes several minutes; model registry speed is the
-largest variable. `wait_for_application.sh` waits for Streamlit's health
-endpoint for up to 30 minutes by default and reports an explicit bootstrap
-failure found in EC2 console output. Supply a different timeout in seconds when
-needed:
+service when `server_configuration = "cloud-init"`, which is the default.
+This normally takes several minutes; model registry speed is the largest
+variable. `wait_for_application.sh` waits for Streamlit's health endpoint for
+up to 30 minutes by default and reports an explicit bootstrap failure found in
+EC2 console output. Supply a different timeout in seconds when needed:
 
 ```bash
 ./wait_for_application.sh 2400
@@ -140,6 +178,7 @@ deployment_mode = "docker"
 ```
 
 Changing user data, including the runtime mode, replaces the EC2 instance.
+Changing `server_configuration` also replaces the instance.
 
 ## Optional SSH
 

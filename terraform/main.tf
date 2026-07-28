@@ -178,15 +178,18 @@ resource "aws_instance" "app" {
   iam_instance_profile        = aws_iam_instance_profile.app.name
   associate_public_ip_address = true
 
-  user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    repository_url           = var.repository_url
-    repository_branch        = var.repository_branch
-    repository_commit        = coalesce(var.repository_commit, "")
-    deployment_mode          = var.deployment_mode
-    ollama_version           = var.ollama_version
-    ollama_model             = var.ollama_model
-    additional_ollama_models = join(" ", var.additional_ollama_models)
-  })
+  user_data = var.server_configuration == "cloud-init" ? templatefile(
+    "${path.module}/user_data.sh.tftpl",
+    {
+      repository_url           = var.repository_url
+      repository_branch        = var.repository_branch
+      repository_commit        = coalesce(var.repository_commit, "")
+      deployment_mode          = var.deployment_mode
+      ollama_version           = var.ollama_version
+      ollama_model             = var.ollama_model
+      additional_ollama_models = join(" ", var.additional_ollama_models)
+    }
+  ) : null
 
   user_data_replace_on_change = true
 
@@ -202,6 +205,13 @@ resource "aws_instance" "app" {
     http_tokens   = "required"
   }
 
+  lifecycle {
+    precondition {
+      condition     = var.server_configuration != "ansible" || var.enable_ssh
+      error_message = "enable_ssh must be true when server_configuration is ansible."
+    }
+  }
+
   provisioner "local-exec" {
     when = destroy
 
@@ -209,9 +219,10 @@ resource "aws_instance" "app" {
   }
 
   tags = {
-    Name         = "${var.project_name}-gpu"
-    Environment  = var.environment
-    ForceDestroy = tostring(var.force_destroy_skip_os_shutdown)
+    Name                = "${var.project_name}-gpu"
+    Environment         = var.environment
+    ServerConfiguration = var.server_configuration
+    ForceDestroy        = tostring(var.force_destroy_skip_os_shutdown)
   }
 
   depends_on = [
