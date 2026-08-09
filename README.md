@@ -1,6 +1,6 @@
 # Local AI Assistant with Ollama
 
-This repository is a portfolio project that demonstrates how one application
+This repository demonstrates how one application
 can evolve from a simple local prototype into an automated, secure, and
 separated AWS deployment. The application is a Streamlit chat interface backed
 by locally hosted Ollama models.
