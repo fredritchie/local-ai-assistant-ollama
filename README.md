@@ -1,4 +1,4 @@
-# Local AI Assistant — AWS Ansible native
+# Local AI Assistant — AWS EC2 Ansible microservices native
 
 This branch uses Terraform for AWS infrastructure and Ansible for configuring
 the two EC2 microservices. Streamlit runs as a native Python systemd service;

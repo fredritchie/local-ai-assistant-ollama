@@ -1,4 +1,4 @@
-# Terraform infrastructure for the native Ansible variant
+# Terraform infrastructure for native Ansible microservices
 
 Terraform creates the VPC, public Streamlit instance, private Ollama GPU
 instance, NAT gateway, security groups, IAM role, generated SSH key, and
