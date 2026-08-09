@@ -13,10 +13,10 @@ for runnable code and deployment instructions.
 |---|---|---|---|---|
 | [`feature/local-native`](../../tree/feature/local-native) | Local Python | Local Ollama | None | Development and learning |
 | [`feature/local-docker`](../../tree/feature/local-docker) | Local Docker | Host Ollama | Docker | Container testing |
-| [`feature/aws-terraform-native`](../../tree/feature/aws-terraform-native) | Native systemd on public T-family EC2 | Native Ollama on private `g4dn.xlarge` | Terraform and EC2 user data | Simple AWS deployment |
-| [`feature/aws-terraform-docker`](../../tree/feature/aws-terraform-docker) | Docker on public T-family EC2 | Native Ollama on private `g4dn.xlarge` | Terraform and EC2 user data | Containerized AWS deployment |
-| [`feature/aws-ansible`](../../tree/feature/aws-ansible) | Native or Docker on public EC2 | Native Ollama on private EC2 | Terraform and Ansible | Repeatable configuration management |
-| [`feature/aws-microservices`](../../tree/feature/aws-microservices) | Configurable native or Docker | Private GPU service | Terraform, cloud-init, and optional Ansible | Complete reference implementation |
+| [`feature/aws-microservices-native`](../../tree/feature/aws-microservices-native) | Native systemd on public T-family EC2 | Native Ollama on private `g4dn.xlarge` | Terraform and EC2 user data | Native AWS deployment |
+| [`feature/aws-microservices-docker`](../../tree/feature/aws-microservices-docker) | Docker on public T-family EC2 | Native Ollama on private `g4dn.xlarge` | Terraform and EC2 user data | Containerized AWS deployment |
+| [`feature/aws-ansible-native`](../../tree/feature/aws-ansible-native) | Native systemd on public EC2 | Native Ollama on private EC2 | Terraform and Ansible | Native configuration management |
+| [`feature/aws-ansible-docker`](../../tree/feature/aws-ansible-docker) | Docker on public EC2 | Native Ollama on private EC2 | Terraform and Ansible | Container configuration management |
 
 ## Start locally
 
@@ -64,7 +64,7 @@ Systems Manager Session Manager.
 
 ```bash
 git fetch origin
-git switch feature/aws-terraform-native
+git switch feature/aws-microservices-native
 ```
 
 Each branch has its own README, CI checks, prerequisites, configuration, and
@@ -76,9 +76,9 @@ needed.
 
 1. Start with `feature/local-native` to understand the application.
 2. Use `feature/local-docker` to validate container behavior.
-3. Choose one Terraform branch for AWS.
-4. Use `feature/aws-ansible` when configuration management is required.
-5. Treat `feature/aws-microservices` as the comprehensive reference branch.
+3. Choose a native or Docker AWS microservices branch for EC2 user-data setup.
+4. Choose a native or Docker Ansible branch when configuration management is
+   required.
 
 AWS deployments create billable EC2, EBS, NAT Gateway, and public IPv4
 resources in `ap-south-1`. Review the selected branch's Terraform plan before
