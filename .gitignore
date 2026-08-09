@@ -28,4 +28,8 @@ terraform/terraform.tfvars
 terraform/backend.tf
 terraform/backend.hcl
 
+# Packer runtime artifacts
+packer/manifest.json
+packer/packer_cache/
+
 *._*

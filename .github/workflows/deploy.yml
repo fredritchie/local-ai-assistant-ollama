@@ -1,0 +1,90 @@
+name: Controlled deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to plan or deploy
+        required: true
+        type: choice
+        options: [dev, prod]
+      apply:
+        description: Apply after producing the reviewed plan
+        required: true
+        type: boolean
+        default: false
+      image_uri:
+        description: Existing ECR digest to promote; leave empty to build this commit
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      TF_VAR_certificate_arn: ${{ vars.ACM_CERTIFICATE_ARN }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: "~1.14.0"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build and publish immutable image
+        if: inputs.image_uri == ''
+        id: image
+        env:
+          ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+        run: |
+          image_uri=$(./scripts/build_and_push.sh "$ECR_REPOSITORY_URL")
+          echo "uri=$image_uri" >>"$GITHUB_OUTPUT"
+      - name: Resolve deployment image
+        id: deployment_image
+        env:
+          PROVIDED_IMAGE_URI: ${{ inputs.image_uri }}
+          BUILT_IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          image_uri=${PROVIDED_IMAGE_URI:-$BUILT_IMAGE_URI}
+          if [[ ! "$image_uri" =~ ^[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/.+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "A digest-pinned ECR image URI is required" >&2
+            exit 1
+          fi
+          echo "uri=$image_uri" >>"$GITHUB_OUTPUT"
+      - name: Initialize remote state
+        working-directory: terraform/environments/${{ inputs.environment }}
+        run: >-
+          terraform init -input=false
+          -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          -backend-config="kms_key_id=${{ vars.TF_STATE_KMS_KEY_ID }}"
+      - name: Create deployment plan
+        working-directory: terraform/environments/${{ inputs.environment }}
+        run: >-
+          terraform plan -input=false -out=tfplan
+          -var="app_image_uri=${{ steps.deployment_image.outputs.uri }}"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: terraform-plan-${{ inputs.environment }}-${{ github.sha }}
+          path: terraform/environments/${{ inputs.environment }}/tfplan
+          retention-days: 7
+      - name: Apply approved plan
+        if: inputs.apply
+        working-directory: terraform/environments/${{ inputs.environment }}
+        run: terraform apply -input=false tfplan
+      - name: Wait for application health
+        if: inputs.apply
+        working-directory: terraform/environments/${{ inputs.environment }}
+        run: |
+          health_url=$(terraform output -raw application_health_url)
+          ../../../scripts/wait_for_application.sh "$health_url"

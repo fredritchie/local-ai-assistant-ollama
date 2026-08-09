@@ -9,6 +9,7 @@ from config import (
     DEFAULT_TEMPERATURE,
     MAX_HISTORY_MESSAGES,
 )
+from observability import logger
 from ollama_client import OllamaClientError, list_models, stream_chat
 
 st.set_page_config(
@@ -18,7 +19,7 @@ st.set_page_config(
 )
 
 st.title("Fred's AI Assistant")
-st.caption("Runs locally using Ollama and Streamlit.")
+st.caption("Private AI inference with Ollama and Streamlit.")
 
 
 @st.cache_data(ttl=10)
@@ -33,15 +34,11 @@ except OllamaClientError as exc:
     st.stop()
 
 if not available_models:
-    st.warning(
-        "No Ollama models are installed. Run: ollama pull llama3.2:3b"
-    )
+    st.warning("No Ollama models are installed. Run: ollama pull llama3.2:3b")
     st.stop()
 
 default_index = (
-    available_models.index(DEFAULT_MODEL)
-    if DEFAULT_MODEL in available_models
-    else 0
+    available_models.index(DEFAULT_MODEL) if DEFAULT_MODEL in available_models else 0
 )
 
 with st.sidebar:
@@ -75,6 +72,7 @@ for message in st.session_state.messages:
 prompt = st.chat_input("Ask something...")
 
 if prompt:
+    logger.info("Chat request started")
     user_message = {
         "role": "user",
         "content": prompt,
@@ -101,13 +99,12 @@ if prompt:
 
             elapsed = time.perf_counter() - start_time
             placeholder.markdown(full_response)
+            logger.info("Chat request completed in %.2f seconds", elapsed)
 
-            st.caption(
-                f"Model: `{selected_model}` · "
-                f"Response time: `{elapsed:.2f}s`"
-            )
+            st.caption(f"Model: `{selected_model}` · Response time: `{elapsed:.2f}s`")
 
         except OllamaClientError as exc:
+            logger.warning("Chat request failed: %s", exc)
             st.error(str(exc))
             full_response = "The model response failed."
 

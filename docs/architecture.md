@@ -1,53 +1,76 @@
-# Architecture
-
-This branch provisions AWS infrastructure with Terraform and configures both
-microservices with Ansible.
-
-![Repository and AWS architecture](architecture.svg)
-
-GitHub renders the SVG directly in this Markdown file. The SVG is checked into
-the repository, so no Mermaid browser extension or external rendering service
-is required.
+# Production architecture and failure domains
 
 ## Request path
 
-1. The browser submits a prompt to Streamlit on port `8501`.
-2. `app.py` adds it to session state and sends the most recent configured
-   history window to `ollama_client.py`.
-3. Locally, the client calls `localhost:11434`; on AWS it calls Ollama's private
-   VPC address on port `11434`.
-4. Ollama runs the selected model on the local CPU/GPU and streams chunks back.
-5. Streamlit renders chunks as they arrive and stores the completed response.
+```text
+Client
+  → public ALB on 80 or 443
+  → private app ASG target on Nginx port 80
+  → Streamlit container on localhost port 8501
+  → internal Ollama ALB on port 11434
+  → private g4dn.xlarge Ollama target
+```
 
-## Provisioning path
+The public ALB and both Auto Scaling Groups span two Availability Zones. The
+application and GPU instances have no public IP addresses. Only the public ALB
+accepts internet traffic. Security-group references restrict both internal
+hops.
 
-Terraform creates a public subnet for a small T-family Streamlit instance and a
-private subnet for a `g4dn.xlarge` Ollama instance. A NAT gateway gives the
-private service outbound-only access for packages and models. Ollama port
-`11434` accepts traffic only from the Streamlit security group.
+## Availability behavior
 
-The Ansible playbook then:
+- The public ALB removes an unhealthy Nginx/Streamlit target.
+- The app ASG replaces it and maintains the configured minimum capacity.
+- The internal ALB removes an unhealthy Ollama target.
+- The GPU ASG replaces the target and verifies every model digest before the
+  target becomes reachable.
+- Production uses one NAT Gateway per AZ so an AZ failure does not remove all
+  private outbound access.
+- Rolling instance refreshes keep healthy capacity while promoting an AMI,
+  image digest, bootstrap change, or model-cache snapshot.
 
-1. Configures and verifies the private Ollama host.
-2. Connects to that host through the public Streamlit bastion when deployed by
-   Terraform.
-3. Configures Streamlit with the private Ollama URL and verifies its health.
+ALBs fail open when every registered target is unhealthy. Alarms therefore
+monitor unhealthy target count and the runbook treats an all-target failure as
+urgent. See the [AWS target health behavior](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html).
 
-The `deploy_with_ansible.sh` wrapper enables CIDR-restricted SSH, generates an
-ignored inventory from Terraform outputs, and makes Ansible the sole server
-configuration mechanism.
+## Session behavior
 
-## Trust boundaries
+Streamlit session state is process-local. Load-balancer stickiness keeps a
+healthy browser session on one target, but instance replacement can reset the
+conversation. This design provides service availability, not durable chat
+history. Add an encrypted external session store before promising conversation
+recovery across failures.
 
-| Boundary | Control |
-|---|---|
-| Browser to Streamlit | TCP `8501`, restricted by `allowed_app_cidr` |
-| Administrator to EC2 | Session Manager by default; optional CIDR-restricted SSH |
-| Streamlit to Ollama | Private VPC traffic; Ollama SG trusts only Streamlit SG |
-| Private Ollama egress | NAT gateway; the GPU instance has no public IP |
-| EC2 metadata | IMDSv2 tokens required |
-| Data at rest | Encrypted gp3 root volume |
-| Terraform secrets | Runtime files ignored; remote encrypted state recommended |
+## Environment differences
 
-The application itself has no authentication or TLS. A production deployment
-should add an authenticated HTTPS reverse proxy or private access path.
+| Setting | Development | Production |
+|---|---:|---:|
+| App capacity | 1 desired, 2 maximum | 2 desired, 4 maximum |
+| GPU capacity | 1 | 2 |
+| NAT Gateways | 1 | 2 |
+| Log retention | 7 days | 30 days |
+| Public transport | HTTP by default | ACM HTTPS with HTTP redirect |
+| AWS WAF | Off | Rate limit and managed rules |
+| ALB deletion protection | Off | On |
+| State key | `dev/terraform.tfstate` | `prod/terraform.tfstate` |
+
+Development preserves the topology but is not highly available. It exists for
+integration tests and portfolio demonstrations at a lower cost.
+
+## Scaling boundaries
+
+The app ASG scales on average CPU utilization. GPU scaling is deliberately
+capacity-controlled because a new node must mount or populate its model cache,
+verify digests, and warm a model before serving traffic. Increase GPU capacity
+through a reviewed deployment after checking EC2 quotas and AZ availability.
+
+## Immutable artifacts
+
+- Packer produces versioned app and GPU AMIs with Ansible.
+- CI or the manual build script produces a multi-architecture ECR image.
+- Terraform consumes the ECR image by digest.
+- The model cache can be restored from an approved EBS snapshot.
+- A model manifest pins the name, digest, disk estimate, VRAM estimate, and
+  preload decision.
+
+This permits independent rollback of host image, application image, and model
+cache.

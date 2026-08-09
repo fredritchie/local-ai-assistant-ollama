@@ -1,6 +1,9 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+  "integration: tests that require a deployed AWS environment",
+]
 
 [tool.ruff]
 line-length = 88

@@ -11,6 +11,7 @@ from config import (
     OLLAMA_BASE_URL,
     REQUEST_TIMEOUT_SECONDS,
 )
+from observability import logger, tracer
 
 client = Client(
     host=OLLAMA_BASE_URL,
@@ -24,13 +25,19 @@ class OllamaClientError(RuntimeError):
 
 def list_models() -> list[str]:
     """Return names of locally installed Ollama models."""
-    try:
-        response = client.list()
-        return [model.model for model in response.models]
-    except Exception as exc:
-        raise OllamaClientError(
-            "Unable to list Ollama models. Confirm that Ollama is running."
-        ) from exc
+    with tracer.start_as_current_span("ollama.list_models") as span:
+        span.set_attribute("ollama.endpoint", OLLAMA_BASE_URL)
+        try:
+            response = client.list()
+            models = [model.model for model in response.models]
+            span.set_attribute("ollama.model_count", len(models))
+            return models
+        except Exception as exc:
+            logger.exception("Unable to list Ollama models")
+            span.record_exception(exc)
+            raise OllamaClientError(
+                "Unable to list Ollama models. Confirm that Ollama is running."
+            ) from exc
 
 
 def stream_chat(
@@ -45,25 +52,37 @@ def stream_chat(
     """
     start_time = time.perf_counter()
 
-    try:
-        stream = client.chat(
-            model=model,
-            messages=messages,
-            stream=True,
-            options={
-                "temperature": temperature,
-            },
-        )
+    with tracer.start_as_current_span("ollama.chat") as span:
+        span.set_attribute("ollama.model", model)
+        span.set_attribute("ollama.message_count", len(messages))
+        try:
+            stream = client.chat(
+                model=model,
+                messages=messages,
+                stream=True,
+                options={
+                    "temperature": temperature,
+                },
+            )
 
-        for chunk in stream:
-            text = chunk.message.content
-            if text:
-                yield text
+            for chunk in stream:
+                text = chunk.message.content
+                if text:
+                    yield text
 
-    except Exception as exc:
-        raise OllamaClientError(
-            "Unable to generate a response. Confirm that Ollama is running "
-            "and the selected model is installed."
-        ) from exc
+            logger.info(
+                "Ollama chat completed",
+                extra={
+                    "model": model,
+                    "elapsed_seconds": time.perf_counter() - start_time,
+                },
+            )
+        except Exception as exc:
+            logger.exception("Ollama chat failed")
+            span.record_exception(exc)
+            raise OllamaClientError(
+                "Unable to generate a response. Confirm that Ollama is running "
+                "and the selected model is installed."
+            ) from exc
 
     return time.perf_counter() - start_time

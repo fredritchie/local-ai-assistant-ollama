@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from unittest.mock import MagicMock, patch
 
 
 def test_environment_configuration() -> None:
@@ -71,3 +72,48 @@ def test_numeric_configuration_is_bounded() -> None:
     )
 
     assert result.stdout.splitlines() == ["1.0", "1.5", "1"]
+
+
+def test_managed_configuration_combines_parameters_and_secrets() -> None:
+    import config
+
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {
+            "Parameters": [
+                {
+                    "Name": "/local-ai/prod/app/DEFAULT_MODEL",
+                    "Value": "managed-model",
+                }
+            ]
+        }
+    ]
+    ssm = MagicMock()
+    ssm.get_paginator.return_value = paginator
+    secrets = MagicMock()
+    secrets.get_secret_value.return_value = {
+        "SecretString": '{"API_TOKEN":"managed-secret"}'
+    }
+    session = MagicMock()
+    session.client.side_effect = lambda service: {
+        "ssm": ssm,
+        "secretsmanager": secrets,
+    }[service]
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "CONFIG_PARAMETER_PATH": "/local-ai/prod",
+                "CONFIG_SECRET_ARNS": "arn:aws:secretsmanager:example",
+            },
+            clear=False,
+        ),
+        patch("config.boto3.session.Session", return_value=session),
+    ):
+        managed = config._load_remote_configuration()
+
+    assert managed == {
+        "DEFAULT_MODEL": "managed-model",
+        "API_TOKEN": "managed-secret",
+    }

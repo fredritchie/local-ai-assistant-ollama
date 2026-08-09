@@ -17,5 +17,9 @@ screenshots/
 README.md
 terraform/
 ansible/
-
-deploy_with_ansible.sh
+packer/
+scripts/
+models/
+docs/
+.github/
+.tflint.hcl

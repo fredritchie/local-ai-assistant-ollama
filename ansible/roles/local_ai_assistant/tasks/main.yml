@@ -1,25 +1,52 @@
 ---
-- name: Validate common deployment variables
+- name: Validate immutable image variables
   ansible.builtin.assert:
     that:
       - ansible_facts.os_family == "Debian"
-      - service_role in ["streamlit", "ollama"]
-      - ollama_primary_model is match("^[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?$")
+      - local_ai_assistant_service_role in ["streamlit", "ollama"]
+      - local_ai_assistant_ollama_version is match("^[0-9]+\\.[0-9]+\\.[0-9]+$")
     quiet: true
 
-- name: Install common packages
+- name: Install common image packages
   ansible.builtin.apt:
-    name: [ca-certificates, curl]
+    name:
+      - awscli
+      - ca-certificates
+      - curl
+      - jq
     state: present
     update_cache: true
     cache_valid_time: 3600
 
+- name: Install application image packages
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - nginx
+    state: present
+  when: local_ai_assistant_service_role == "streamlit"
+
+- name: Enable application image services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - docker
+    - nginx
+  when: local_ai_assistant_service_role == "streamlit"
+
+- name: Install XFS tools for the model cache
+  ansible.builtin.apt:
+    name: xfsprogs
+    state: present
+  when: local_ai_assistant_service_role == "ollama"
+
 - name: Read installed Ollama version
   ansible.builtin.command: ollama --version
-  register: ollama_version_result
+  register: local_ai_assistant_ollama_version_result
   changed_when: false
   failed_when: false
-  when: service_role == "ollama"
+  when: local_ai_assistant_service_role == "ollama"
 
 - name: Download Ollama installer
   ansible.builtin.get_url:
@@ -27,177 +54,37 @@
     dest: /tmp/ollama-install.sh
     mode: "0755"
   when:
-    - service_role == "ollama"
-    - ollama_version_result.rc != 0 or ollama_version not in ollama_version_result.stdout
+    - local_ai_assistant_service_role == "ollama"
+    - >-
+      local_ai_assistant_ollama_version_result.rc != 0 or
+      local_ai_assistant_ollama_version not in
+      local_ai_assistant_ollama_version_result.stdout
 
-- name: Install configured Ollama version
+- name: Install pinned Ollama version
   ansible.builtin.command: /tmp/ollama-install.sh
   environment:
-    OLLAMA_VERSION: "{{ ollama_version }}"
+    HOME: /root
+    OLLAMA_VERSION: "{{ local_ai_assistant_ollama_version }}"
+  changed_when: true
   when:
-    - service_role == "ollama"
-    - ollama_version_result.rc != 0 or ollama_version not in ollama_version_result.stdout
+    - local_ai_assistant_service_role == "ollama"
+    - >-
+      local_ai_assistant_ollama_version_result.rc != 0 or
+      local_ai_assistant_ollama_version not in
+      local_ai_assistant_ollama_version_result.stdout
 
-- name: Create Ollama systemd override directory
-  ansible.builtin.file:
-    path: /etc/systemd/system/ollama.service.d
-    state: directory
-    mode: "0755"
-  when: service_role == "ollama"
-
-- name: Bind Ollama to the private network interface
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/ollama.service.d/network.conf
-    mode: "0644"
-    content: |
-      [Service]
-      Environment="OLLAMA_HOST=0.0.0.0:11434"
-  notify: Restart Ollama
-  when: service_role == "ollama"
-
-- name: Apply Ollama service changes
-  ansible.builtin.meta: flush_handlers
-
-- name: Enable Ollama
+- name: Stop Ollama before creating the reusable image
   ansible.builtin.systemd_service:
     name: ollama
     enabled: true
-    state: started
-  when: service_role == "ollama"
+    state: stopped
+  when: local_ai_assistant_service_role == "ollama"
 
-- name: Wait for local Ollama API
-  ansible.builtin.uri:
-    url: http://127.0.0.1:11434/api/tags
-    status_code: 200
-  register: ollama_api
-  retries: 30
-  delay: 2
-  until: ollama_api.status == 200
-  when: service_role == "ollama"
-
-- name: List installed models
-  ansible.builtin.command: ollama list
-  register: ollama_model_list
-  changed_when: false
-  when: service_role == "ollama"
-
-- name: Record installed model names
-  ansible.builtin.set_fact:
-    ollama_installed_models: "{{ ollama_model_list.stdout_lines[1:] | map('regex_replace', '\\s+.*$', '') | list }}"
-  when: service_role == "ollama"
-
-- name: Pull primary model
-  ansible.builtin.command: "ollama pull {{ ollama_primary_model }}"
-  register: primary_model_pull
-  retries: 3
-  delay: 10
-  until: primary_model_pull.rc == 0
-  when:
-    - service_role == "ollama"
-    - ollama_primary_model not in ollama_installed_models
-
-- name: Pull additional models
-  ansible.builtin.command: "ollama pull {{ item }}"
-  loop: "{{ ollama_additional_models }}"
-  register: additional_model_pull
-  retries: 3
-  delay: 10
-  until: additional_model_pull.rc == 0
-  when:
-    - service_role == "ollama"
-    - item not in ollama_installed_models
-
-- name: Install Streamlit host packages
+- name: Remove transient package data
   ansible.builtin.apt:
-    name: [git]
-    state: present
-  when: service_role == "streamlit"
+    autoclean: true
+    autoremove: true
 
-- name: Install and enable Docker
-  ansible.builtin.apt:
-    name: docker.io
-    state: present
-  when:
-    - service_role == "streamlit"
-
-- name: Enable Docker
-  ansible.builtin.systemd_service:
-    name: docker
-    enabled: true
-    state: started
-  when:
-    - service_role == "streamlit"
-
-- name: Wait for private Ollama API
-  ansible.builtin.uri:
-    url: "{{ ollama_private_url }}/api/tags"
-    status_code: 200
-  register: private_ollama_api
-  retries: 180
-  delay: 10
-  until: private_ollama_api.status == 200
-  when: service_role == "streamlit"
-
-- name: Create application account
-  ansible.builtin.user:
-    name: "{{ app_user }}"
-    home: "{{ app_install_dir }}"
-    create_home: false
-    shell: /usr/sbin/nologin
-    system: true
-  when: service_role == "streamlit"
-
-- name: Create application directory
-  ansible.builtin.file:
-    path: "{{ app_install_dir }}"
-    state: directory
-    owner: "{{ app_user }}"
-    group: "{{ app_user }}"
-    mode: "0755"
-  when: service_role == "streamlit"
-
-- name: Check out application repository
-  become_user: "{{ app_user }}"
-  ansible.builtin.git:
-    repo: "{{ app_repository_url }}"
-    dest: "{{ app_install_dir }}"
-    version: "{{ app_repository_version | default(app_repository_branch, true) }}"
-    update: true
-  register: app_repository_checkout
-  notify: Restart Local AI Assistant
-  when: service_role == "streamlit"
-
-- name: Build application container
-  ansible.builtin.command: "docker build --pull --tag {{ app_image_name }} {{ app_install_dir }}"
-  notify: Restart Local AI Assistant
-  when:
-    - service_role == "streamlit"
-
-- name: Install Streamlit systemd unit
-  ansible.builtin.template:
-    src: local-ai-assistant.service.j2
-    dest: /etc/systemd/system/local-ai-assistant.service
-    mode: "0644"
-  notify:
-    - Reload systemd
-    - Restart Local AI Assistant
-  when: service_role == "streamlit"
-
-- name: Install Streamlit health command
-  ansible.builtin.copy:
-    src: local-ai-assistant-health
-    dest: /usr/local/bin/local-ai-assistant-health
-    mode: "0755"
-  when: service_role == "streamlit"
-
-- name: Apply Streamlit service changes
-  ansible.builtin.meta: flush_handlers
-
-- name: Verify Streamlit health
-  ansible.builtin.command: /usr/local/bin/local-ai-assistant-health
-  changed_when: false
-  register: streamlit_health
-  retries: 30
-  delay: 5
-  until: streamlit_health.rc == 0
-  when: service_role == "streamlit"
+- name: Clear cloud-init state for the next launch
+  ansible.builtin.command: cloud-init clean --logs
+  changed_when: true

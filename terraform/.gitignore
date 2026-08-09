@@ -2,7 +2,6 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
-backend.tf
 backend.hcl
 *.plan
 tfplan
@@ -13,3 +12,4 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+modules/*/.terraform.lock.hcl
