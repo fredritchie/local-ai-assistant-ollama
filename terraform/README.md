@@ -1,4 +1,4 @@
-# Terraform infrastructure for the Ansible variant
+# Terraform infrastructure for the Docker Ansible variant
 
 Terraform creates the VPC, public Streamlit instance, private Ollama GPU
 instance, NAT gateway, security groups, IAM role, generated SSH key, and
@@ -10,7 +10,6 @@ Set these values in `terraform.tfvars`:
 ```hcl
 allowed_app_cidr = "203.0.113.10/32"
 allowed_ssh_cidr = "203.0.113.10/32"
-deployment_mode  = "native" # or "docker"
 ```
 
 Use the repository-level wrapper for deployment:

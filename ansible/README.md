@@ -1,8 +1,7 @@
-# Server configuration with Ansible
+# Docker server configuration with Ansible
 
 The playbook configures a private Ollama inference host followed by a public
-Streamlit host. Streamlit supports the same `native` and `docker` modes as the
-Terraform cloud-init path.
+Streamlit host running as a Docker container under systemd.
 
 ## Prerequisites
 
@@ -32,17 +31,15 @@ Replace both example addresses, the bastion address, user, and key path.
 Host-key checking is enabled, so connect once with SSH or add the server key to
 `known_hosts` before running the playbook.
 
-Edit `group_vars/all.yml` to select the repository revision, runtime mode,
+Edit `group_vars/all.yml` to select the repository revision, image name,
 Ollama version, models, and the private API URL used by Streamlit. Set an
 immutable revision when required:
 
 ```yaml
 app_repository_version: 0123456789abcdef0123456789abcdef01234567
-app_deployment_mode: native
+app_image_name: local-ai-assistant:latest
 ollama_private_url: http://10.20.2.10:11434
 ```
-
-Use `app_deployment_mode: docker` to build and run the repository Dockerfile.
 
 ## Apply
 

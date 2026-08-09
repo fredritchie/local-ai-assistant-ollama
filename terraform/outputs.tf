@@ -40,7 +40,7 @@ output "application_health_check_command" {
 
 output "deployment_mode" {
   description = "Configured application runtime mode."
-  value       = var.deployment_mode
+  value       = "docker"
 }
 
 output "server_configuration" {
@@ -54,7 +54,7 @@ output "ansible_variables" {
     app_repository_url       = var.repository_url
     app_repository_branch    = var.repository_branch
     app_repository_version   = var.repository_commit != null ? var.repository_commit : ""
-    app_deployment_mode      = var.deployment_mode
+    app_deployment_mode      = "docker"
     ollama_version           = var.ollama_version
     ollama_primary_model     = var.ollama_model
     ollama_additional_models = var.additional_ollama_models

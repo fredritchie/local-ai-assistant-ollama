@@ -1,8 +1,8 @@
-# Local AI Assistant — AWS with Ansible
+# Local AI Assistant — AWS Ansible Docker
 
 This branch uses Terraform for AWS infrastructure and Ansible for configuring
-the two EC2 microservices. Streamlit can run natively or in Docker; Ollama runs
-on the private GPU host.
+the two EC2 microservices. Streamlit runs in a Docker container managed by
+systemd; Ollama runs on the private GPU host.
 
 ![AWS architecture](docs/architecture.svg)
 
@@ -28,7 +28,6 @@ Create `terraform/terraform.tfvars`:
 ```hcl
 allowed_app_cidr = "203.0.113.10/32"
 allowed_ssh_cidr = "203.0.113.10/32"
-deployment_mode  = "native" # or "docker"
 ```
 
 Deploy from the repository root:

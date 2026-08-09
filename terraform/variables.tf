@@ -136,7 +136,7 @@ variable "repository_url" {
 variable "repository_branch" {
   description = "Git branch deployed onto the instance."
   type        = string
-  default     = "feature/aws-ansible"
+  default     = "feature/aws-ansible-docker"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9._/-]+$", var.repository_branch))
@@ -155,17 +155,6 @@ variable "repository_commit" {
       can(regex("^[0-9a-fA-F]{7,40}$", var.repository_commit))
     )
     error_message = "repository_commit must be null or a 7-to-40-character Git SHA."
-  }
-}
-
-variable "deployment_mode" {
-  description = "Application runtime: native systemd process or Docker container."
-  type        = string
-  default     = "native"
-
-  validation {
-    condition     = contains(["native", "docker"], var.deployment_mode)
-    error_message = "deployment_mode must be either native or docker."
   }
 }
 
