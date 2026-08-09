@@ -1,27 +1,50 @@
 # Local AI Assistant with Ollama
 
-A Streamlit chat application backed by Ollama, organized as focused Git
-branches so each branch contains one deployment approach instead of a mixture
-of unrelated infrastructure and setup code.
+This repository is a portfolio project that demonstrates how one application
+can evolve from a simple local prototype into an automated, secure, and
+separated AWS deployment. The application is a Streamlit chat interface backed
+by locally hosted Ollama models.
 
-The `main` branch is intentionally documentation-only. Choose a branch below
-for runnable code and deployment instructions.
+Instead of combining every deployment method in one codebase, each stage is
+maintained in a dedicated Git branch. This makes the progression easy to
+review: start with local native execution, introduce containers, move to AWS,
+add configuration management, and finally separate the web and inference
+workloads.
 
-## Branch progression
+The `main` branch is intentionally documentation-only and acts as the landing
+page for the portfolio. Runnable code and branch-specific instructions live in
+the implementation branches linked below.
 
-Start at the bottom and move upward. Each branch adds the next deployment or
-operational capability over the branch immediately below it.
+## What this project demonstrates
 
-| Branch | Short description | Advantage over the previous branch |
+- Python application development with Streamlit and Ollama
+- Native and Docker-based application packaging
+- Infrastructure as code with Terraform
+- Repeatable server configuration with Ansible
+- EC2 bootstrapping through user data and cloud-init
+- NVIDIA GPU inference on `g4dn.xlarge`
+- Public and private subnet design in a dedicated AWS VPC
+- Security groups, encrypted EBS volumes, IMDSv2, and Session Manager
+- Automated health checks, bootstrap status reporting, and failure diagnostics
+- Independent web and inference services with appropriate EC2 sizing
+- CI checks for Python, shell scripts, Terraform, Ansible, Docker, and docs
+
+## Deployment progression
+
+Start at the bottom of the table and move upward. Each branch introduces an
+additional deployment or operational capability over the branch immediately
+below it.
+
+| Branch | Description | Advantage over the previous branch |
 |---|---|---|
-| [`feature/aws-ec2-ansible-microservices-docker`](../../tree/feature/aws-ec2-ansible-microservices-docker) | Ansible manages Dockerized Streamlit publicly and Ollama on a private GPU EC2. | Over Ansible microservices native: adds container isolation and image-based Streamlit deployment. |
-| [`feature/aws-ec2-ansible-microservices-native`](../../tree/feature/aws-ec2-ansible-microservices-native) | Ansible manages native Streamlit and Ollama on separate public/private EC2 instances. | Over single-EC2 Ansible Docker: isolates inference, removes Ollama's public IP, and enables independent workload sizing. |
-| [`feature/aws-ec2-ansible-docker`](../../tree/feature/aws-ec2-ansible-docker) | Ansible manages Ollama and Dockerized Streamlit together on one GPU EC2. | Over single-EC2 Ansible native: adds a reproducible container image and runtime isolation. |
-| [`feature/aws-ec2-ansible-native`](../../tree/feature/aws-ec2-ansible-native) | Ansible manages native Ollama and Streamlit together on one GPU EC2. | Over EC2 user-data Docker: adds repeatable, idempotent in-place configuration and updates. |
-| [`feature/aws-ec2-userdata-docker`](../../tree/feature/aws-ec2-userdata-docker) | EC2 user data installs Ollama and Dockerized Streamlit on one GPU EC2. | Over EC2 user-data native: adds container packaging and application isolation. |
-| [`feature/aws-ec2-userdata-native`](../../tree/feature/aws-ec2-userdata-native) | EC2 user data installs native Ollama and Streamlit on one GPU EC2. | Over local Docker: adds Terraform-managed AWS hosting, GPU capacity, encrypted storage, and Session Manager. |
-| [`feature/local-docker`](../../tree/feature/local-docker) | Streamlit runs in Docker and connects to Ollama on the local host. | Over `local-native`: provides an isolated, reproducible application runtime and image-based packaging. |
-| [`feature/local-native`](../../tree/feature/local-native) | Streamlit and Ollama run directly on one local machine. | Foundation: simplest setup, fastest feedback, and lowest cost. |
+| [AWS EC2 Ansible microservices Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-docker) | Terraform creates separate public Streamlit and private GPU Ollama instances. Ansible manages Ollama natively and Streamlit as a Docker container. | Adds container isolation and reproducible image-based delivery to the separated architecture. |
+| [AWS EC2 Ansible microservices native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-native) | Terraform creates separate instances, while Ansible installs native Streamlit publicly and Ollama privately. | Isolates inference from the internet and allows the application and GPU tiers to be sized independently. |
+| [AWS EC2 Ansible Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-docker) | Terraform provisions one public GPU instance. Ansible manages native Ollama and Dockerized Streamlit on that instance. | Adds reproducible container packaging and runtime isolation. |
+| [AWS EC2 Ansible native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-native) | Terraform provisions one public GPU instance, and Ansible manages native Ollama and Streamlit services. | Adds repeatable, idempotent configuration and in-place application updates. |
+| [AWS EC2 user data Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-userdata-docker) | Terraform provisions one public GPU instance. EC2 user data installs native Ollama and launches Streamlit with Docker. | Adds container packaging to the automated AWS deployment. |
+| [AWS EC2 user data native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-userdata-native) | Terraform provisions a public `g4dn.xlarge`, and EC2 user data installs native Ollama and Streamlit. | Introduces repeatable AWS infrastructure, GPU inference, encrypted storage, and remote management. |
+| [Local Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/local-docker) | Ollama runs on the local host while Streamlit runs in a Docker container. | Adds an isolated and reproducible application runtime. |
+| [Local native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/local-native) | Python, Streamlit, and Ollama run directly on one local machine. | Establishes the simplest, lowest-cost foundation for development. |
 
 ```text
 AWS EC2 Ansible microservices Docker
@@ -41,94 +64,55 @@ Local Docker
 Local native — START HERE
 ```
 
-## Branch descriptions
+## Repository approach
 
-- [`feature/local-native`](../../tree/feature/local-native) runs Ollama and the
-  Streamlit application directly on the local machine with Python.
-- [`feature/local-docker`](../../tree/feature/local-docker) keeps Ollama on the
-  host and packages the Streamlit application in a local Docker container.
-- [`feature/aws-ec2-userdata-native`](../../tree/feature/aws-ec2-userdata-native)
-  uses Terraform and EC2 user data to install native Ollama and Streamlit on a
-  single public `g4dn.xlarge` instance.
-- [`feature/aws-ec2-userdata-docker`](../../tree/feature/aws-ec2-userdata-docker)
-  uses Terraform and EC2 user data to run Ollama natively and Streamlit in
-  Docker on a single public `g4dn.xlarge` instance.
-- [`feature/aws-ec2-ansible-native`](../../tree/feature/aws-ec2-ansible-native)
-  provisions one public GPU EC2 instance with Terraform and configures native
-  Ollama and Streamlit services with Ansible.
-- [`feature/aws-ec2-ansible-docker`](../../tree/feature/aws-ec2-ansible-docker)
-  provisions one public GPU EC2 instance with Terraform, then uses Ansible to
-  manage native Ollama and a Dockerized Streamlit application.
-- [`feature/aws-ec2-ansible-microservices-native`](../../tree/feature/aws-ec2-ansible-microservices-native)
-  separates native Streamlit onto a public general-purpose EC2 instance and
-  Ollama onto a private GPU EC2 instance, both configured by Ansible.
-- [`feature/aws-ec2-ansible-microservices-docker`](../../tree/feature/aws-ec2-ansible-microservices-docker)
-  uses the same public/private microservice architecture while packaging the
-  public Streamlit service as a Docker container.
+Every implementation branch is self-contained and includes only the files
+needed for that deployment method. Depending on the branch, this includes:
 
-## Start locally
+- Application source code and automated tests
+- Dependency and environment configuration
+- Native startup scripts or a Dockerfile
+- Terraform configurations and example variables
+- EC2 bootstrap scripts with completion markers and failure reporting
+- Ansible inventories, roles, handlers, and deployment helpers
+- Architecture documentation and CI workflows
 
-Native Python:
+This branch-per-stage structure keeps the learning path visible in Git history
+and prevents local, user-data, Ansible, native, Docker, and microservice
+concerns from becoming mixed together.
 
-```bash
-git clone --branch feature/local-native \
-  https://github.com/fredritchie/local-ai-assistant-ollama.git
-cd local-ai-assistant-ollama
-./server_script.sh
-```
+## Engineering decisions highlighted
 
-Docker:
+- **Separation of concerns:** later branches place Streamlit and Ollama on
+  different instances and network tiers.
+- **Least exposure:** the microservice branches keep Ollama on a private subnet
+  and allow its API traffic only from the Streamlit security group.
+- **Reproducibility:** Terraform, cloud-init, Docker, and Ansible each provide a
+  progressively stronger deployment workflow.
+- **Operational visibility:** bootstrap markers, cloud-init failure reporting,
+  service health checks, and a wait helper make deployment status observable.
+- **Safe access:** AWS branches support Session Manager and optional
+  CIDR-restricted SSH instead of requiring unrestricted administrative ports.
+- **Cost awareness:** the project starts locally, uses a single EC2 instance in
+  intermediate stages, and introduces multi-instance infrastructure only when
+  workload isolation is required.
 
-```bash
-git clone --branch feature/local-docker \
-  https://github.com/fredritchie/local-ai-assistant-ollama.git
-cd local-ai-assistant-ollama
-./docker_setup.sh
-```
+## Technology stack
 
-## AWS architecture
+| Area | Technologies |
+|---|---|
+| Application | Python, Streamlit, Ollama |
+| Containers | Docker |
+| Infrastructure | Terraform, AWS EC2, VPC, EBS, IAM, Systems Manager |
+| Configuration | EC2 user data, cloud-init, Ansible, systemd |
+| Quality | Pytest, Ruff, ShellCheck, Terraform validation, Ansible syntax checks, GitHub Actions |
 
-The four single-EC2 branches run both services on one `g4dn.xlarge`. Only the
-last two microservice branches separate the web and inference workloads:
+## Explore the project
 
-```text
-Internet
-   |
-Internet Gateway
-   |
-Public subnet
-   |-- Streamlit on t3 / t3a / ARM64 t4g, port 8501
-   `-- NAT Gateway
-             |
-       Private subnet
-          Ollama on g4dn.xlarge, port 11434
-```
+Select a branch from the deployment table to review its source code, README,
+prerequisites, configuration options, validation commands, and deployment
+workflow. The branches are designed to be explored in order, but each can also
+be reviewed independently as an example of its deployment approach.
 
-Ollama has no public IP. Its security group accepts port `11434` only from the
-Streamlit security group. The private subnet uses a NAT gateway for package and
-model downloads. Both instances use encrypted root volumes, IMDSv2, and AWS
-Systems Manager Session Manager.
-
-## Switch an existing clone
-
-```bash
-git fetch origin
-git switch feature/aws-ec2-userdata-native
-```
-
-Each branch has its own README, CI checks, prerequisites, configuration, and
-deployment commands. Avoid merging deployment branches together; create shared
-application fixes on one branch and cherry-pick the focused commit where it is
-needed.
-
-## Choosing a level
-
-- Use local branches for development without AWS cost.
-- Use EC2 user data for the smallest automated AWS setup.
-- Add Ansible for repeatable in-place configuration and application updates.
-- Use Ansible microservices when Streamlit and GPU inference need separate
-  security boundaries or independent sizing.
-
-AWS deployments create billable EC2, EBS, NAT Gateway, and public IPv4
-resources in `ap-south-1`. Review the selected branch's Terraform plan before
-applying it and destroy unused environments.
+AWS branches create billable resources in `ap-south-1`. Review the selected
+branch's Terraform plan before applying it and destroy unused environments.
