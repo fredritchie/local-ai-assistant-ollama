@@ -8,4 +8,9 @@ htmlcov/
 .env
 .DS_Store
 .vscode/
+
+# Ignore runtime files left by switching from deployment branches.
+ansible/
+terraform/
+
 *._*
