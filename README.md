@@ -7,10 +7,9 @@ by locally hosted Ollama models.
 
 Instead of combining every deployment method in one codebase, each stage is
 maintained in a dedicated Git branch. This makes the progression easy to
-review: start with local native execution, introduce containers, move to AWS,
-add configuration management, and finally separate the web and inference
-workloads before turning that design into a production-style, highly available
-platform.
+compare across local native execution, containers, AWS automation,
+configuration management, separated web and inference workloads, and the final
+production-style highly available platform.
 
 The `main` branch is intentionally documentation-only and acts as the landing
 page for the portfolio. Runnable code and branch-specific instructions live in
@@ -105,9 +104,8 @@ concerns from becoming mixed together.
   service health checks, and a wait helper make deployment status observable.
 - **Safe access:** AWS branches support Session Manager and optional
   CIDR-restricted SSH instead of requiring unrestricted administrative ports.
-- **Cost awareness:** the project starts locally, uses a single EC2 instance in
-  intermediate stages, and introduces multi-instance infrastructure only when
-  workload isolation is required.
+- **Cost awareness:** the branches make the tradeoffs between local execution,
+  a single EC2 instance, separated workloads, and production HA explicit.
 - **Production progression:** the final branch adds failure-domain-aware
   capacity, ALBs, ECR digest promotion, secure runtime configuration, remote
   state locking, WAF, telemetry, and controlled deployment approvals.
