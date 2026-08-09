@@ -9,27 +9,36 @@ for runnable code and deployment instructions.
 
 ## Branch progression
 
-Start at the bottom and move upward. Native and Docker become separate tracks
-after the local foundation, so each advantage is compared with the relevant
-branch below it.
+Start at the bottom and move upward. Each branch adds the next deployment or
+operational capability over the branch immediately below it.
 
 | Branch | Short description | Advantage over the previous branch |
 |---|---|---|
-| [`feature/aws-ansible-docker`](../../tree/feature/aws-ansible-docker) | Terraform creates the two EC2 services; Ansible builds and manages Streamlit in Docker. | Over `aws-microservices-docker`: repeatable, idempotent configuration and easier updates without replacing EC2 instances. |
-| [`feature/aws-ansible-native`](../../tree/feature/aws-ansible-native) | Terraform creates the infrastructure; Ansible installs native Streamlit and private Ollama services. | Over `aws-microservices-native`: configuration can be rerun, audited, and updated independently of Terraform. |
-| [`feature/aws-microservices-docker`](../../tree/feature/aws-microservices-docker) | EC2 user data runs Streamlit in Docker publicly and Ollama on a private GPU instance. | Over `local-docker`: adds a new VPC, workload separation, GPU inference, encrypted storage, and AWS management. |
-| [`feature/aws-microservices-native`](../../tree/feature/aws-microservices-native) | EC2 user data installs native Streamlit publicly and Ollama on a private GPU instance. | Over `local-native`: adds reproducible AWS infrastructure, security groups, private inference, and Session Manager. |
+| [`feature/aws-ec2-ansible-microservices-docker`](../../tree/feature/aws-ec2-ansible-microservices-docker) | Ansible manages Dockerized Streamlit publicly and Ollama on a private GPU EC2. | Over Ansible microservices native: adds container isolation and image-based Streamlit deployment. |
+| [`feature/aws-ec2-ansible-microservices-native`](../../tree/feature/aws-ec2-ansible-microservices-native) | Ansible manages native Streamlit and Ollama on separate public/private EC2 instances. | Over single-EC2 Ansible Docker: isolates inference, removes Ollama's public IP, and enables independent workload sizing. |
+| [`feature/aws-ec2-ansible-docker`](../../tree/feature/aws-ec2-ansible-docker) | Ansible manages Ollama and Dockerized Streamlit together on one GPU EC2. | Over single-EC2 Ansible native: adds a reproducible container image and runtime isolation. |
+| [`feature/aws-ec2-ansible-native`](../../tree/feature/aws-ec2-ansible-native) | Ansible manages native Ollama and Streamlit together on one GPU EC2. | Over EC2 user-data Docker: adds repeatable, idempotent in-place configuration and updates. |
+| [`feature/aws-ec2-userdata-docker`](../../tree/feature/aws-ec2-userdata-docker) | EC2 user data installs Ollama and Dockerized Streamlit on one GPU EC2. | Over EC2 user-data native: adds container packaging and application isolation. |
+| [`feature/aws-ec2-userdata-native`](../../tree/feature/aws-ec2-userdata-native) | EC2 user data installs native Ollama and Streamlit on one GPU EC2. | Over local Docker: adds Terraform-managed AWS hosting, GPU capacity, encrypted storage, and Session Manager. |
 | [`feature/local-docker`](../../tree/feature/local-docker) | Streamlit runs in Docker and connects to Ollama on the local host. | Over `local-native`: provides an isolated, reproducible application runtime and image-based packaging. |
 | [`feature/local-native`](../../tree/feature/local-native) | Streamlit and Ollama run directly on one local machine. | Foundation: simplest setup, fastest feedback, and lowest cost. |
 
 ```text
-aws-ansible-native                 aws-ansible-docker
-        ↑                                  ↑
-aws-microservices-native          aws-microservices-docker
-        ↑                                  ↑
-local-native ────────────────────── local-docker
-        ↑
-   START HERE
+AWS EC2 Ansible microservices Docker
+                  ↑
+AWS EC2 Ansible microservices native
+                  ↑
+AWS EC2 Ansible Docker
+                  ↑
+AWS EC2 Ansible native
+                  ↑
+AWS EC2 user-data Docker
+                  ↑
+AWS EC2 user-data native
+                  ↑
+Local Docker
+                  ↑
+Local native — START HERE
 ```
 
 ## Start locally
@@ -54,7 +63,8 @@ cd local-ai-assistant-ollama
 
 ## AWS architecture
 
-The AWS branches separate the web and inference workloads:
+The four single-EC2 branches run both services on one `g4dn.xlarge`. Only the
+last two microservice branches separate the web and inference workloads:
 
 ```text
 Internet
@@ -78,7 +88,7 @@ Systems Manager Session Manager.
 
 ```bash
 git fetch origin
-git switch feature/aws-microservices-native
+git switch feature/aws-ec2-userdata-native
 ```
 
 Each branch has its own README, CI checks, prerequisites, configuration, and
@@ -86,15 +96,13 @@ deployment commands. Avoid merging deployment branches together; create shared
 application fixes on one branch and cherry-pick the focused commit where it is
 needed.
 
-## Choosing a track
+## Choosing a level
 
-- Choose the native track for fewer components and straightforward systemd
-  operation.
-- Choose the Docker track for image-based packaging and runtime isolation.
-- Stop at the microservices branch when immutable EC2 user-data setup is
-  sufficient.
-- Continue to the Ansible branch when you need repeatable in-place updates and
-  configuration management.
+- Use local branches for development without AWS cost.
+- Use EC2 user data for the smallest automated AWS setup.
+- Add Ansible for repeatable in-place configuration and application updates.
+- Use Ansible microservices when Streamlit and GPU inference need separate
+  security boundaries or independent sizing.
 
 AWS deployments create billable EC2, EBS, NAT Gateway, and public IPv4
 resources in `ap-south-1`. Review the selected branch's Terraform plan before
