@@ -1,6 +1,16 @@
 output "instance_id" {
-  description = "ID of the GPU EC2 instance."
+  description = "Compatibility alias for the Streamlit EC2 instance."
   value       = aws_instance.app.id
+}
+
+output "app_instance_id" {
+  description = "ID of the public Streamlit EC2 instance."
+  value       = aws_instance.app.id
+}
+
+output "ollama_instance_id" {
+  description = "ID of the private Ollama GPU EC2 instance."
+  value       = aws_instance.ollama.id
 }
 
 output "aws_region" {
@@ -9,8 +19,13 @@ output "aws_region" {
 }
 
 output "public_ip" {
-  description = "Public IPv4 address of the instance."
+  description = "Public IPv4 address of the Streamlit instance."
   value       = aws_instance.app.public_ip
+}
+
+output "ollama_private_ip" {
+  description = "Private IPv4 address of the Ollama instance."
+  value       = aws_instance.ollama.private_ip
 }
 
 output "streamlit_url" {
@@ -24,7 +39,7 @@ output "application_health_check_command" {
 }
 
 output "wait_for_application_command" {
-  description = "Command that waits for bootstrap and application readiness."
+  description = "Command that waits for both services and application readiness."
   value       = "./wait_for_application.sh"
 }
 
@@ -43,11 +58,12 @@ output "ansible_variables" {
   value = {
     app_repository_url       = var.repository_url
     app_repository_branch    = var.repository_branch
-    app_repository_version   = coalesce(var.repository_commit, "")
+    app_repository_version   = var.repository_commit != null ? var.repository_commit : ""
     app_deployment_mode      = var.deployment_mode
     ollama_version           = var.ollama_version
     ollama_primary_model     = var.ollama_model
     ollama_additional_models = var.additional_ollama_models
+    ollama_private_url       = "http://${aws_instance.ollama.private_ip}:11434"
   }
 }
 
@@ -62,8 +78,13 @@ output "private_key_path" {
 }
 
 output "ssm_session_command" {
-  description = "AWS Systems Manager Session Manager command for shell access."
-  value       = "aws ssm start-session --region ap-south-1 --target ${aws_instance.app.id}"
+  description = "Session Manager command for the Streamlit instance."
+  value       = "aws ssm start-session --region ${var.aws_region} --target ${aws_instance.app.id}"
+}
+
+output "ollama_ssm_session_command" {
+  description = "Session Manager command for the private Ollama instance."
+  value       = "aws ssm start-session --region ${var.aws_region} --target ${aws_instance.ollama.id}"
 }
 
 output "vpc_id" {
@@ -72,12 +93,23 @@ output "vpc_id" {
 }
 
 output "security_group_id" {
-  description = "ID of the EC2 security group."
+  description = "ID of the Streamlit security group."
   value       = aws_security_group.app.id
 }
 
+output "ollama_security_group_id" {
+  description = "ID of the private Ollama security group."
+  value       = aws_security_group.ollama.id
+}
+
+output "selected_app_ami_id" {
+  description = "Ubuntu AMI selected for the Streamlit instance architecture."
+  value       = local.app_ami_id
+  sensitive   = true
+}
+
 output "selected_dlami_id" {
-  description = "Latest GPU DLAMI selected through the AWS public SSM parameter."
+  description = "GPU DLAMI selected for the private Ollama instance."
   value       = data.aws_ssm_parameter.gpu_dlami.value
   sensitive   = true
 }

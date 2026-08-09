@@ -48,7 +48,7 @@ jobs:
       - name: Check shell scripts
         run: |
           shellcheck server_script.sh docker_setup.sh deploy_with_ansible.sh terraform/wait_for_application.sh ansible/roles/local_ai_assistant/files/local-ai-assistant-health
-          shellcheck -e SC2086,SC2154 terraform/user_data.sh.tftpl
+          shellcheck -e SC2086,SC2154 terraform/app_user_data.sh.tftpl terraform/ollama_user_data.sh.tftpl
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4

@@ -2,9 +2,9 @@
 
 A Streamlit chat application that runs against a local Ollama server. It
 supports streamed replies, model selection, temperature control, bounded
-session history, Docker packaging, and a Terraform deployment for an AWS GPU
-instance. An Ansible role provides repeatable server configuration for
-Debian-family hosts.
+session history, Docker packaging, and a two-service AWS deployment. Streamlit
+runs on a small public T-family instance while Ollama runs on a private
+`g4dn.xlarge` GPU instance.
 
 ![Repository and AWS architecture](docs/architecture.svg)
 
@@ -21,7 +21,8 @@ details.
 - Ansible-managed native or Docker server configuration
 - Automated tests, linting, shell checks, Ansible and Terraform validation,
   and Docker build checks in GitHub Actions
-- Terraform-managed `g4dn.xlarge` in a new `ap-south-1` VPC
+- Terraform-managed Streamlit and Ollama EC2 microservices in a new VPC
+- Security-group-only access from Streamlit to the private Ollama API
 - Session Manager access by default, with optional restricted SSH
 
 ## Repository structure
@@ -60,7 +61,8 @@ details.
 │   ├── variables.tf
 │   ├── outputs.tf
 │   ├── versions.tf
-│   ├── user_data.sh.tftpl
+│   ├── app_user_data.sh.tftpl
+│   ├── ollama_user_data.sh.tftpl
 │   ├── wait_for_application.sh
 │   ├── backend.tf.example
 │   ├── terraform.tfvars.example
@@ -153,22 +155,20 @@ The image runs as a non-root user and includes a Streamlit health check.
 
 ## Server configuration with Ansible
 
-The Ansible playbook idempotently configures a Debian-family systemd server. It
-installs a pinned Ollama version and requested models, checks out the selected
-application revision, runs the app natively or with Docker, installs the
-systemd services, and verifies the Streamlit health endpoint.
+The Ansible playbook configures two Debian-family hosts: private Ollama first,
+then public Streamlit. For AWS, the wrapper reaches the private GPU host through
+the Streamlit host as an SSH bastion.
 
 ```bash
 python -m pip install -r requirements-dev.txt
 cd ansible
 cp inventory.ini.example inventory.ini
-# Edit the target host, SSH user, and key in inventory.ini.
+# Edit both hosts, the bastion address, SSH user, and key.
 ansible-playbook playbook.yml
 ```
 
 Configuration defaults are in `ansible/group_vars/all.yml`. The generated
-inventory is ignored by Git. See the [Ansible guide](ansible/README.md) for
-variables, Docker mode, health checks, and use with a Terraform-created host.
+inventory is ignored by Git. See the [Ansible guide](ansible/README.md).
 
 ### Launch and configure AWS with one command
 
@@ -187,9 +187,9 @@ Then run from the repository root:
 ```
 
 This one command initializes and applies Terraform, generates an ignored
-Ansible inventory from the Terraform outputs, records the new server's SSH
-host key, waits for connectivity, and runs the application role. Terraform
-shows its normal approval prompt before creating the billable `g4dn.xlarge`.
+Ansible inventory from Terraform outputs, records both SSH host keys, uses the
+public instance as a bastion, and configures both services. Terraform shows its
+normal approval prompt before creating the billable instances and NAT gateway.
 For deliberate unattended deployment:
 
 ```bash
@@ -198,9 +198,10 @@ For deliberate unattended deployment:
 
 ## AWS deployment
 
-The Terraform stack creates a new VPC and a `g4dn.xlarge` EC2 instance in
-`ap-south-1`. Session Manager is enabled by default, so port 22 and an SSH key
-are not required.
+The Terraform stack creates a public `t3.small` Streamlit instance and a
+private `g4dn.xlarge` Ollama instance in `ap-south-1`. `t3`, `t3a`, and ARM64
+`t4g` application sizes are configurable. The private subnet uses a NAT gateway
+for package and model downloads.
 
 ```bash
 cd terraform
@@ -251,12 +252,21 @@ If no model is present:
 ollama pull llama3.2:3b
 ```
 
-On EC2, inspect bootstrap and services:
+On the public Streamlit instance:
 
 ```bash
 sudo tail -f /var/log/cloud-init-output.log
-sudo systemctl status ollama local-ai-assistant
+sudo systemctl status local-ai-assistant
 sudo journalctl -u local-ai-assistant -f
+```
+
+On the private Ollama instance, reached through Session Manager:
+
+```bash
+ollama list
+sudo local-ollama-health
+sudo systemctl status ollama
+sudo journalctl -u ollama -f
 ```
 
 If Terraform reports insufficient capacity or quota, request a

@@ -47,6 +47,7 @@ fi
 require_command terraform
 require_command ansible
 require_command ansible-playbook
+require_command ssh
 require_command ssh-keyscan
 
 echo "Initializing Terraform..."
@@ -64,6 +65,9 @@ if [[ "$(terraform -chdir="$TERRAFORM_DIR" output -raw server_configuration)" !=
 fi
 
 PUBLIC_IP="$(terraform -chdir="$TERRAFORM_DIR" output -raw public_ip)"
+OLLAMA_PRIVATE_IP="$(
+    terraform -chdir="$TERRAFORM_DIR" output -raw ollama_private_ip
+)"
 PRIVATE_KEY_OUTPUT="$(
     terraform -chdir="$TERRAFORM_DIR" output -raw private_key_path
 )"
@@ -98,17 +102,42 @@ fi
 
 chmod 0600 "$KNOWN_HOSTS_FILE"
 
+echo "Collecting the private Ollama host key through the Streamlit bastion..."
+PRIVATE_HOST_KEY=""
+for _ in {1..60}; do
+    PRIVATE_HOST_KEY="$({
+        ssh \
+            -i "$PRIVATE_KEY_PATH" \
+            -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
+            -o StrictHostKeyChecking=yes \
+            "ubuntu@$PUBLIC_IP" \
+            "ssh-keyscan -T 5 -H '$OLLAMA_PRIVATE_IP'" 2>/dev/null
+    } || true)"
+    [[ -n "$PRIVATE_HOST_KEY" ]] && break
+    sleep 10
+done
+
+if [[ -z "$PRIVATE_HOST_KEY" ]]; then
+    echo "Could not collect the private Ollama SSH host key." >&2
+    exit 1
+fi
+printf '%s\n' "$PRIVATE_HOST_KEY" >>"$KNOWN_HOSTS_FILE"
+
 {
-    echo "[app_servers]"
+    echo "[streamlit_servers]"
     printf '%s\n' \
-        "local-ai-assistant ansible_host=$PUBLIC_IP ansible_user=ubuntu ansible_ssh_private_key_file='$PRIVATE_KEY_PATH' ansible_ssh_common_args='-o UserKnownHostsFile=$KNOWN_HOSTS_FILE -o StrictHostKeyChecking=yes'"
+        "streamlit ansible_host=$PUBLIC_IP ansible_user=ubuntu ansible_ssh_private_key_file='$PRIVATE_KEY_PATH' ansible_ssh_common_args='-o UserKnownHostsFile=$KNOWN_HOSTS_FILE -o StrictHostKeyChecking=yes'"
+    echo
+    echo "[ollama_servers]"
+    printf '%s\n' \
+        "ollama ansible_host=$OLLAMA_PRIVATE_IP ansible_user=ubuntu ansible_ssh_private_key_file='$PRIVATE_KEY_PATH' ansible_ssh_common_args='-o ProxyJump=ubuntu@$PUBLIC_IP -o UserKnownHostsFile=$KNOWN_HOSTS_FILE -o StrictHostKeyChecking=yes'"
 } >"$INVENTORY_FILE"
 chmod 0600 "$INVENTORY_FILE"
 
 echo "Configuring $PUBLIC_IP with Ansible..."
 (
     cd "$ANSIBLE_DIR"
-    ansible app_servers \
+    ansible all \
         -i "$INVENTORY_FILE" \
         -m ansible.builtin.wait_for_connection \
         -a "timeout=600 sleep=10"

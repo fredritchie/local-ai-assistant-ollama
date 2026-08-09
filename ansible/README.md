@@ -1,13 +1,14 @@
 # Server configuration with Ansible
 
-The playbook configures a Debian-family systemd server with Ollama and the
-Local AI Assistant. It supports the same `native` and `docker` runtime modes as
-the Terraform bootstrap.
+The playbook configures a private Ollama inference host followed by a public
+Streamlit host. Streamlit supports the same `native` and `docker` modes as the
+Terraform cloud-init path.
 
 ## Prerequisites
 
 - Ansible Core on the control machine
-- An Ubuntu or Debian server reachable over SSH
+- Two Ubuntu or Debian servers; the private host may use the public host as a
+  bastion
 - A remote user with passwordless `sudo`
 - Outbound access from the server for system packages, the Git repository, and
   Ollama models
@@ -27,16 +28,18 @@ cd ansible
 cp inventory.ini.example inventory.ini
 ```
 
-Replace the example address, user, and private-key path in `inventory.ini`.
+Replace both example addresses, the bastion address, user, and key path.
 Host-key checking is enabled, so connect once with SSH or add the server key to
 `known_hosts` before running the playbook.
 
 Edit `group_vars/all.yml` to select the repository revision, runtime mode,
-Ollama version, and models. Set an immutable revision when required:
+Ollama version, models, and the private API URL used by Streamlit. Set an
+immutable revision when required:
 
 ```yaml
 app_repository_version: 0123456789abcdef0123456789abcdef01234567
 app_deployment_mode: native
+ollama_private_url: http://10.20.2.10:11434
 ```
 
 Use `app_deployment_mode: docker` to build and run the repository Dockerfile.
@@ -49,17 +52,15 @@ Run from the `ansible` directory so Ansible loads the included configuration:
 ansible-playbook playbook.yml
 ```
 
-After a successful run, open `http://SERVER_IP:8501`. On the server:
+After a successful run, open `http://STREAMLIT_PUBLIC_IP:8501`.
 
 ```bash
 sudo local-ai-assistant-health
-sudo systemctl status ollama local-ai-assistant
+sudo systemctl status local-ai-assistant
 sudo journalctl -u local-ai-assistant -f
 ```
 
-The playbook is safe to rerun. It updates the selected Git revision, installs
-missing dependencies and models, renders the systemd unit, and waits for the
-Streamlit health endpoint.
+On the private host, use `ollama list` and `systemctl status ollama`.
 
 ## Using a Terraform host
 
@@ -79,9 +80,9 @@ Run:
 ```
 
 The wrapper forces Terraform's `server_configuration` to `ansible` and enables
-restricted SSH. It creates `inventory.terraform.ini` and
-`known_hosts.terraform`, waits for the instance, then passes Terraform's
-repository, runtime, Ollama, and model variables to the playbook.
+restricted SSH. It creates an inventory for both instances, uses ProxyJump
+through Streamlit for the private host, records both host keys, and passes the
+Terraform deployment variables to the playbook.
 
 Terraform prompts before creating resources. Pass `-auto-approve` only when an
 unattended, billable deployment is intended:

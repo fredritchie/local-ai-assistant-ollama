@@ -1,2 +1,5 @@
-[app_servers]
-local-ai-assistant ansible_host=203.0.113.10 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/local-ai-assistant.pem
+[streamlit_servers]
+streamlit ansible_host=203.0.113.10 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/local-ai-assistant.pem
+
+[ollama_servers]
+ollama ansible_host=10.20.2.10 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/local-ai-assistant.pem ansible_ssh_common_args='-o ProxyJump=ubuntu@203.0.113.10'

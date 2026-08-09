@@ -28,6 +28,12 @@ variable "public_subnet_cidr" {
   default     = "10.20.1.0/24"
 }
 
+variable "private_subnet_cidr" {
+  description = "IPv4 CIDR for the private Ollama subnet."
+  type        = string
+  default     = "10.20.2.0/24"
+}
+
 variable "allowed_ssh_cidr" {
   description = "Trusted public IPv4 CIDR allowed to SSH, normally YOUR_IP/32."
   type        = string
@@ -84,7 +90,7 @@ variable "server_configuration" {
 }
 
 variable "instance_type" {
-  description = "EC2 GPU instance type."
+  description = "Private Ollama GPU instance type."
   type        = string
   default     = "g4dn.xlarge"
 
@@ -94,8 +100,30 @@ variable "instance_type" {
   }
 }
 
+variable "app_instance_type" {
+  description = "T-family instance type for the public Streamlit service."
+  type        = string
+  default     = "t3.small"
+
+  validation {
+    condition     = can(regex("^(t3|t3a|t4g)\\.(micro|small|medium|large)$", var.app_instance_type))
+    error_message = "app_instance_type must be a supported t3, t3a, or t4g size."
+  }
+}
+
+variable "app_root_volume_size" {
+  description = "Size of the encrypted Streamlit gp3 root volume in GiB."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.app_root_volume_size >= 16
+    error_message = "app_root_volume_size must be at least 16 GiB."
+  }
+}
+
 variable "root_volume_size" {
-  description = "Size of the encrypted gp3 root volume in GiB."
+  description = "Size of the encrypted Ollama GPU gp3 root volume in GiB."
   type        = number
   default     = 100
 
