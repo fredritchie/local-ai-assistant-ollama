@@ -3,7 +3,6 @@
   ansible.builtin.assert:
     that:
       - ansible_facts.os_family == "Debian"
-      - app_deployment_mode in ["native", "docker"]
       - app_repository_url is match("^https://")
       - ollama_version is match("^[0-9]+\\.[0-9]+\\.[0-9]+$")
       - ollama_primary_model is match("^[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?$")
@@ -18,7 +17,7 @@
       - app_max_history_messages | int >= 1
     fail_msg: >-
       Check the role variables. This role supports Debian-family systemd hosts
-      and native or docker deployment modes.
+      and a native Streamlit deployment.
     quiet: true
 
 - name: Install base operating system packages
@@ -33,19 +32,6 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
-
-- name: Install Docker for Docker deployment mode
-  ansible.builtin.apt:
-    name: docker.io
-    state: present
-  when: app_deployment_mode == "docker"
-
-- name: Enable Docker for Docker deployment mode
-  ansible.builtin.systemd_service:
-    name: docker
-    enabled: true
-    state: started
-  when: app_deployment_mode == "docker"
 
 - name: Read the installed Ollama version
   ansible.builtin.command:
@@ -166,7 +152,6 @@
     dest: "{{ app_install_dir }}"
     version: "{{ app_repository_version | default(app_repository_branch, true) }}"
     update: true
-  register: app_repository_checkout
   notify: Restart Local AI Assistant
 
 - name: Create the native Python virtual environment
@@ -178,40 +163,12 @@
       - venv
       - "{{ app_install_dir }}/.venv"
     creates: "{{ app_install_dir }}/.venv/bin/python"
-  when: app_deployment_mode == "native"
 
 - name: Install native Python dependencies
   become_user: "{{ app_user }}"
   ansible.builtin.pip:
     requirements: "{{ app_install_dir }}/requirements.txt"
     virtualenv: "{{ app_install_dir }}/.venv"
-  when: app_deployment_mode == "native"
-  notify: Restart Local AI Assistant
-
-- name: Inspect the application container image
-  ansible.builtin.command:
-    argv:
-      - docker
-      - image
-      - inspect
-      - "{{ app_image_name }}"
-  register: app_image_inspect
-  changed_when: false
-  failed_when: false
-  when: app_deployment_mode == "docker"
-
-- name: Build the application container image
-  ansible.builtin.command:
-    argv:
-      - docker
-      - build
-      - --pull
-      - --tag
-      - "{{ app_image_name }}"
-      - "{{ app_install_dir }}"
-  when:
-    - app_deployment_mode == "docker"
-    - app_repository_checkout.changed or app_image_inspect.rc != 0
   notify: Restart Local AI Assistant
 
 - name: Install the application systemd unit
