@@ -38,11 +38,6 @@ output "application_health_check_command" {
   value       = "curl --fail --show-error http://${aws_instance.app.public_ip}:8501/_stcore/health"
 }
 
-output "deployment_mode" {
-  description = "Configured application runtime mode."
-  value       = "native"
-}
-
 output "server_configuration" {
   description = "System responsible for configuring the EC2 instance."
   value       = "ansible"
@@ -54,7 +49,6 @@ output "ansible_variables" {
     app_repository_url       = var.repository_url
     app_repository_branch    = var.repository_branch
     app_repository_version   = var.repository_commit != null ? var.repository_commit : ""
-    app_deployment_mode      = "native"
     ollama_version           = var.ollama_version
     ollama_primary_model     = var.ollama_model
     ollama_additional_models = var.additional_ollama_models
