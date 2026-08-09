@@ -1,7 +1,7 @@
 ---
 app_repository_url: >-
   https://github.com/fredritchie/local-ai-assistant-ollama.git
-app_repository_branch: main
+app_repository_branch: feature/aws-ansible
 # Set a tag or commit SHA to deploy an immutable revision. An empty value uses
 # app_repository_branch.
 app_repository_version: ""

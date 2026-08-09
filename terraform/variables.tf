@@ -136,7 +136,7 @@ variable "repository_url" {
 variable "repository_branch" {
   description = "Git branch deployed onto the instance."
   type        = string
-  default     = "main"
+  default     = "feature/aws-ansible"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9._/-]+$", var.repository_branch))
