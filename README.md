@@ -9,7 +9,8 @@ Instead of combining every deployment method in one codebase, each stage is
 maintained in a dedicated Git branch. This makes the progression easy to
 review: start with local native execution, introduce containers, move to AWS,
 add configuration management, and finally separate the web and inference
-workloads.
+workloads before turning that design into a production-style, highly available
+platform.
 
 The `main` branch is intentionally documentation-only and acts as the landing
 page for the portfolio. Runnable code and branch-specific instructions live in
@@ -27,16 +28,21 @@ the implementation branches linked below.
 - Security groups, encrypted EBS volumes, IMDSv2, and Session Manager
 - Automated health checks, bootstrap status reporting, and failure diagnostics
 - Independent web and inference services with appropriate EC2 sizing
+- Multi-AZ load balancing, Auto Scaling, and explicit failure domains
+- Immutable ECR image promotion and Packer-built AMIs
+- SSM/Secrets Manager configuration, encrypted remote Terraform state, and WAF
+- CloudWatch logs, metrics, dashboards, alarms, traces, and GPU telemetry
+- Controlled optional CI/CD with GitHub OIDC and protected environments
 - CI checks for Python, shell scripts, Terraform, Ansible, Docker, and docs
 
 ## Deployment progression
 
-Start at the bottom of the table and move upward. Each branch introduces an
-additional deployment or operational capability over the branch immediately
-below it.
+The table is ordered from the most advanced implementation to the simplest
+foundation. Each row states what it adds over the branch immediately below it.
 
 | Branch | Description | Advantage over the previous branch |
 |---|---|---|
+| [AWS production HA](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-production-ha) | The final portfolio branch adds a multi-AZ public ALB, private app and GPU Auto Scaling Groups, an internal Ollama ALB, Nginx on port 80, ECR delivery, Packer AMIs, managed configuration, remote state, WAF, observability, tests, and optional controlled CI/CD. | Turns the separated Docker architecture into a highly available, immutable, observable, and promotion-driven platform with documented security, recovery, model lifecycle, and cost controls. |
 | [AWS EC2 Ansible microservices Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-docker) | Terraform creates separate public Streamlit and private GPU Ollama instances. Ansible manages Ollama natively and Streamlit as a Docker container. | Adds container isolation and reproducible image-based delivery to the separated architecture. |
 | [AWS EC2 Ansible microservices native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-native) | Terraform creates separate instances, while Ansible installs native Streamlit publicly and Ollama privately. | Isolates inference from the internet and allows the application and GPU tiers to be sized independently. |
 | [AWS EC2 Ansible Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-docker) | Terraform provisions one public GPU instance. Ansible manages native Ollama and Dockerized Streamlit on that instance. | Adds reproducible container packaging and runtime isolation. |
@@ -47,6 +53,8 @@ below it.
 | [Local native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/local-native) | Python, Streamlit, and Ollama run directly on one local machine. | Establishes the simplest, lowest-cost foundation for development. |
 
 ```text
+AWS production HA
+                  ↑
 AWS EC2 Ansible microservices Docker
                   ↑
 AWS EC2 Ansible microservices native
@@ -61,7 +69,7 @@ AWS EC2 user-data native
                   ↑
 Local Docker
                   ↑
-Local native — START HERE
+Local native
 ```
 
 ## Repository approach
@@ -76,6 +84,10 @@ needed for that deployment method. Depending on the branch, this includes:
 - EC2 bootstrap scripts with completion markers and failure reporting
 - Ansible inventories, roles, handlers, and deployment helpers
 - Architecture documentation and CI workflows
+
+The final production branch additionally includes environment-separated remote
+state, immutable artifacts, edge protection, autoscaling, observability,
+integration/infra tests, operational runbooks, and a documented cost model.
 
 This branch-per-stage structure keeps the learning path visible in Git history
 and prevents local, user-data, Ansible, native, Docker, and microservice
@@ -96,6 +108,9 @@ concerns from becoming mixed together.
 - **Cost awareness:** the project starts locally, uses a single EC2 instance in
   intermediate stages, and introduces multi-instance infrastructure only when
   workload isolation is required.
+- **Production progression:** the final branch adds failure-domain-aware
+  capacity, ALBs, ECR digest promotion, secure runtime configuration, remote
+  state locking, WAF, telemetry, and controlled deployment approvals.
 
 ## Technology stack
 
@@ -103,16 +118,17 @@ concerns from becoming mixed together.
 |---|---|
 | Application | Python, Streamlit, Ollama |
 | Containers | Docker |
-| Infrastructure | Terraform, AWS EC2, VPC, EBS, IAM, Systems Manager |
-| Configuration | EC2 user data, cloud-init, Ansible, systemd |
-| Quality | Pytest, Ruff, ShellCheck, Terraform validation, Ansible syntax checks, GitHub Actions |
+| Infrastructure | Terraform, AWS EC2, VPC, ALB, Auto Scaling, EBS, ECR, IAM, Systems Manager, Secrets Manager, WAF |
+| Configuration | EC2 user data, cloud-init, Ansible, Packer, systemd |
+| Observability | CloudWatch Logs, metrics, dashboards and alarms; X-Ray-compatible OTLP traces |
+| Quality | Pytest, Ruff, ShellCheck, TFLint, Checkov, Trivy, Terraform native tests, Ansible lint, GitHub Actions |
 
 ## Explore the project
 
 Select a branch from the deployment table to review its source code, README,
 prerequisites, configuration options, validation commands, and deployment
-workflow. The branches are designed to be explored in order, but each can also
-be reviewed independently as an example of its deployment approach.
+workflow. Each branch is self-contained and can be reviewed independently as an
+example of its deployment approach.
 
 AWS branches create billable resources in `ap-south-1`. Review the selected
 branch's Terraform plan before applying it and destroy unused environments.
