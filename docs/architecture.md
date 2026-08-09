@@ -1,7 +1,7 @@
 # Architecture
 
-The same application runs locally, inside Docker, or on a Terraform-managed AWS
-GPU instance.
+This branch runs Streamlit in Docker beside native Ollama on one
+Terraform-managed AWS GPU instance.
 
 ![Repository and AWS architecture](architecture.svg)
 
@@ -32,7 +32,7 @@ Cloud-init then:
 3. Pulls additional models with retries without failing the entire bootstrap if
    an optional model is temporarily unavailable.
 4. Clones the configured branch and optionally checks out an immutable commit.
-5. Starts either the native Python or Docker systemd service.
+5. Builds the Streamlit image and starts its Docker systemd service.
 6. Waits for Streamlit's health endpoint and writes a completion marker. Any
    failed bootstrap writes a failure marker and an identifiable console-log
    message.

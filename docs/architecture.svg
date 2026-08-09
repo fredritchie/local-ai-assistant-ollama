@@ -22,7 +22,7 @@
   <rect class="box" x="565" y="150" width="535" height="365" rx="16"/>
   <text class="title" x="595" y="190">EC2 g4dn.xlarge · Ubuntu CUDA DLAMI</text>
   <rect class="accent" x="610" y="230" width="195" height="95" rx="12"/>
-  <text class="label" x="667" y="265">Streamlit</text><text class="small" x="637" y="292">native or container</text>
+  <text class="label" x="667" y="265">Streamlit</text><text class="small" x="637" y="292">Docker container</text>
   <rect class="accent" x="860" y="230" width="195" height="95" rx="12"/>
   <text class="label" x="925" y="265">Ollama</text><text class="small" x="891" y="292">localhost:11434</text>
   <rect class="box" x="610" y="380" width="195" height="80" rx="12"/>
