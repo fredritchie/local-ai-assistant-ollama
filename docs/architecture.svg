@@ -17,7 +17,7 @@
   <text class="label" x="395" y="190">Public subnet</text>
   <rect class="box" x="325" y="225" width="280" height="125" rx="12"/>
   <text class="label" x="360" y="260">Streamlit · t3/t3a/t4g</text>
-  <text class="small" x="355" y="288">native or Docker · port 8501</text>
+  <text class="small" x="355" y="288">native systemd · port 8501</text>
   <text class="small" x="355" y="313">public IP · SSM managed</text>
   <rect class="box" x="325" y="395" width="280" height="80" rx="12"/>
   <text class="label" x="405" y="428">NAT gateway</text>

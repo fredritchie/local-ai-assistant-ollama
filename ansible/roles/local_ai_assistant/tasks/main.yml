@@ -113,23 +113,6 @@
     state: present
   when: service_role == "streamlit"
 
-- name: Install and enable Docker
-  ansible.builtin.apt:
-    name: docker.io
-    state: present
-  when:
-    - service_role == "streamlit"
-    - app_deployment_mode == "docker"
-
-- name: Enable Docker
-  ansible.builtin.systemd_service:
-    name: docker
-    enabled: true
-    state: started
-  when:
-    - service_role == "streamlit"
-    - app_deployment_mode == "docker"
-
 - name: Wait for private Ollama API
   ansible.builtin.uri:
     url: "{{ ollama_private_url }}/api/tags"
@@ -176,7 +159,6 @@
     creates: "{{ app_install_dir }}/.venv/bin/python"
   when:
     - service_role == "streamlit"
-    - app_deployment_mode == "native"
 
 - name: Install native Python dependencies
   become_user: "{{ app_user }}"
@@ -186,14 +168,6 @@
   notify: Restart Local AI Assistant
   when:
     - service_role == "streamlit"
-    - app_deployment_mode == "native"
-
-- name: Build application container
-  ansible.builtin.command: "docker build --pull --tag {{ app_image_name }} {{ app_install_dir }}"
-  notify: Restart Local AI Assistant
-  when:
-    - service_role == "streamlit"
-    - app_deployment_mode == "docker"
 
 - name: Install Streamlit systemd unit
   ansible.builtin.template:

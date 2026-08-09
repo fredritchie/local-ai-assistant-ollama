@@ -1,19 +1,11 @@
 [Unit]
 Description=Local AI Assistant
-After=network-online.target{% if app_deployment_mode == "docker" %} docker.service{% endif %}
+After=network-online.target
 Wants=network-online.target
-{% if app_deployment_mode == "docker" %}Requires=docker.service{% endif %}
 
 [Service]
 Type=simple
 WorkingDirectory={{ app_install_dir }}
-{% if app_deployment_mode == "docker" %}
-ExecStartPre=-/usr/bin/docker rm -f local-ai-assistant
-ExecStart=/usr/bin/docker run --name local-ai-assistant --network host -e DEFAULT_MODEL={{ ollama_primary_model }} -e DEFAULT_TEMPERATURE={{ app_default_temperature }} -e REQUEST_TIMEOUT_SECONDS={{ app_request_timeout_seconds }} -e MAX_HISTORY_MESSAGES={{ app_max_history_messages }} -e OLLAMA_BASE_URL={{ ollama_private_url }} {{ app_image_name }}
-ExecStop=/usr/bin/docker stop -t 10 local-ai-assistant
-ExecStopPost=-/usr/bin/docker rm -f local-ai-assistant
-TimeoutStopSec=30
-{% else %}
 User={{ app_user }}
 Group={{ app_group }}
 Environment=DEFAULT_MODEL={{ ollama_primary_model }}
@@ -22,7 +14,6 @@ Environment=REQUEST_TIMEOUT_SECONDS={{ app_request_timeout_seconds }}
 Environment=MAX_HISTORY_MESSAGES={{ app_max_history_messages }}
 Environment=OLLAMA_BASE_URL={{ ollama_private_url }}
 ExecStart={{ app_install_dir }}/.venv/bin/python -m streamlit run app.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true
-{% endif %}
 Restart=always
 RestartSec=5
 
