@@ -7,16 +7,30 @@ of unrelated infrastructure and setup code.
 The `main` branch is intentionally documentation-only. Choose a branch below
 for runnable code and deployment instructions.
 
-## Deployment branches
+## Branch progression
 
-| Branch | Streamlit runtime | Ollama runtime | Infrastructure | Best for |
-|---|---|---|---|---|
-| [`feature/local-native`](../../tree/feature/local-native) | Local Python | Local Ollama | None | Development and learning |
-| [`feature/local-docker`](../../tree/feature/local-docker) | Local Docker | Host Ollama | Docker | Container testing |
-| [`feature/aws-microservices-native`](../../tree/feature/aws-microservices-native) | Native systemd on public T-family EC2 | Native Ollama on private `g4dn.xlarge` | Terraform and EC2 user data | Native AWS deployment |
-| [`feature/aws-microservices-docker`](../../tree/feature/aws-microservices-docker) | Docker on public T-family EC2 | Native Ollama on private `g4dn.xlarge` | Terraform and EC2 user data | Containerized AWS deployment |
-| [`feature/aws-ansible-native`](../../tree/feature/aws-ansible-native) | Native systemd on public EC2 | Native Ollama on private EC2 | Terraform and Ansible | Native configuration management |
-| [`feature/aws-ansible-docker`](../../tree/feature/aws-ansible-docker) | Docker on public EC2 | Native Ollama on private EC2 | Terraform and Ansible | Container configuration management |
+Start at the bottom and move upward. Native and Docker become separate tracks
+after the local foundation, so each advantage is compared with the relevant
+branch below it.
+
+| Branch | Short description | Advantage over the previous branch |
+|---|---|---|
+| [`feature/aws-ansible-docker`](../../tree/feature/aws-ansible-docker) | Terraform creates the two EC2 services; Ansible builds and manages Streamlit in Docker. | Over `aws-microservices-docker`: repeatable, idempotent configuration and easier updates without replacing EC2 instances. |
+| [`feature/aws-ansible-native`](../../tree/feature/aws-ansible-native) | Terraform creates the infrastructure; Ansible installs native Streamlit and private Ollama services. | Over `aws-microservices-native`: configuration can be rerun, audited, and updated independently of Terraform. |
+| [`feature/aws-microservices-docker`](../../tree/feature/aws-microservices-docker) | EC2 user data runs Streamlit in Docker publicly and Ollama on a private GPU instance. | Over `local-docker`: adds a new VPC, workload separation, GPU inference, encrypted storage, and AWS management. |
+| [`feature/aws-microservices-native`](../../tree/feature/aws-microservices-native) | EC2 user data installs native Streamlit publicly and Ollama on a private GPU instance. | Over `local-native`: adds reproducible AWS infrastructure, security groups, private inference, and Session Manager. |
+| [`feature/local-docker`](../../tree/feature/local-docker) | Streamlit runs in Docker and connects to Ollama on the local host. | Over `local-native`: provides an isolated, reproducible application runtime and image-based packaging. |
+| [`feature/local-native`](../../tree/feature/local-native) | Streamlit and Ollama run directly on one local machine. | Foundation: simplest setup, fastest feedback, and lowest cost. |
+
+```text
+aws-ansible-native                 aws-ansible-docker
+        ↑                                  ↑
+aws-microservices-native          aws-microservices-docker
+        ↑                                  ↑
+local-native ────────────────────── local-docker
+        ↑
+   START HERE
+```
 
 ## Start locally
 
@@ -72,13 +86,15 @@ deployment commands. Avoid merging deployment branches together; create shared
 application fixes on one branch and cherry-pick the focused commit where it is
 needed.
 
-## Suggested progression
+## Choosing a track
 
-1. Start with `feature/local-native` to understand the application.
-2. Use `feature/local-docker` to validate container behavior.
-3. Choose a native or Docker AWS microservices branch for EC2 user-data setup.
-4. Choose a native or Docker Ansible branch when configuration management is
-   required.
+- Choose the native track for fewer components and straightforward systemd
+  operation.
+- Choose the Docker track for image-based packaging and runtime isolation.
+- Stop at the microservices branch when immutable EC2 user-data setup is
+  sufficient.
+- Continue to the Ansible branch when you need repeatable in-place updates and
+  configuration management.
 
 AWS deployments create billable EC2, EBS, NAT Gateway, and public IPv4
 resources in `ap-south-1`. Review the selected branch's Terraform plan before
