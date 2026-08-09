@@ -15,7 +15,4 @@ tests/
 test_*.py
 screenshots/
 README.md
-terraform/
-
-server_script.sh
 docker_setup.sh

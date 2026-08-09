@@ -8,24 +8,4 @@ htmlcov/
 .env
 .DS_Store
 .vscode/
-
-# Ansible host-specific inventory and secrets
-ansible/inventory.ini
-ansible/inventory.terraform.ini
-ansible/known_hosts.terraform
-ansible/known_hosts.terraform.tmp
-ansible/*.retry
-
-# Terraform runtime files and local secrets
-terraform/.terraform/
-terraform/*.tfstate
-terraform/*.tfstate.*
-terraform/*.tfplan
-terraform/*.plan
-terraform/tfplan
-terraform/*.pem
-terraform/terraform.tfvars
-terraform/backend.tf
-terraform/backend.hcl
-
 *._*
