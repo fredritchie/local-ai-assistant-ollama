@@ -99,44 +99,12 @@ if [[ -n "${repository_commit}" ]]; then
     sudo -u ubuntu git -C /opt/local-ai-assistant-ollama checkout --detach "${repository_commit}"
 fi
 
-if [[ "${deployment_mode}" == "docker" ]]; then
-    if ! command -v docker >/dev/null 2>&1; then
-        apt-get install -y docker.io
-    fi
+sudo -u ubuntu python3 -m venv /opt/local-ai-assistant-ollama/.venv
+sudo -u ubuntu /opt/local-ai-assistant-ollama/.venv/bin/python -m pip install --upgrade pip
+sudo -u ubuntu /opt/local-ai-assistant-ollama/.venv/bin/python -m pip install \
+    -r /opt/local-ai-assistant-ollama/requirements.txt
 
-    systemctl enable --now docker
-    docker build --pull \
-        -t local-ai-assistant:latest \
-        /opt/local-ai-assistant-ollama
-
-    cat >/etc/systemd/system/local-ai-assistant.service <<'SERVICE'
-[Unit]
-Description=Local AI Assistant Docker container
-After=network-online.target ollama.service docker.service
-Wants=network-online.target
-Requires=ollama.service docker.service
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/local-ai-assistant-ollama
-ExecStartPre=-/usr/bin/docker rm -f local-ai-assistant
-ExecStart=/usr/bin/docker run --name local-ai-assistant --network host -e DEFAULT_MODEL=${ollama_model} -e OLLAMA_BASE_URL=http://localhost:11434 local-ai-assistant:latest
-ExecStop=/usr/bin/docker stop -t 10 local-ai-assistant
-ExecStopPost=-/usr/bin/docker rm -f local-ai-assistant
-Restart=always
-RestartSec=5
-TimeoutStopSec=30
-
-[Install]
-WantedBy=multi-user.target
-SERVICE
-else
-    sudo -u ubuntu python3 -m venv /opt/local-ai-assistant-ollama/.venv
-    sudo -u ubuntu /opt/local-ai-assistant-ollama/.venv/bin/python -m pip install --upgrade pip
-    sudo -u ubuntu /opt/local-ai-assistant-ollama/.venv/bin/python -m pip install \
-        -r /opt/local-ai-assistant-ollama/requirements.txt
-
-    cat >/etc/systemd/system/local-ai-assistant.service <<'SERVICE'
+cat >/etc/systemd/system/local-ai-assistant.service <<'SERVICE'
 [Unit]
 Description=Local AI Assistant Streamlit application
 After=network-online.target ollama.service
@@ -157,7 +125,6 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 SERVICE
-fi
 
 systemctl daemon-reload
 systemctl enable --now local-ai-assistant.service
@@ -193,7 +160,7 @@ fi
 {
     echo "status=complete"
     echo "timestamp=$(date --iso-8601=seconds)"
-    echo "deployment_mode=${deployment_mode}"
+    echo "deployment_mode=native"
     echo "model=${ollama_model}"
 } >"$BOOTSTRAP_COMPLETE_MARKER"
 chmod 0644 "$BOOTSTRAP_COMPLETE_MARKER"

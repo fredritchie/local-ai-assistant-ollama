@@ -28,11 +28,6 @@ output "wait_for_application_command" {
   value       = "./wait_for_application.sh"
 }
 
-output "deployment_mode" {
-  description = "Configured application runtime mode."
-  value       = var.deployment_mode
-}
-
 output "ssh_command" {
   description = "Example SSH command when optional SSH access is enabled."
   value       = var.enable_ssh ? "ssh -i ${local_sensitive_file.private_key[0].filename} ubuntu@${aws_instance.app.public_ip}" : null

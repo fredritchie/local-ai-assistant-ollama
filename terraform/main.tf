@@ -181,8 +181,7 @@ resource "aws_instance" "app" {
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     repository_url           = var.repository_url
     repository_branch        = var.repository_branch
-    repository_commit        = coalesce(var.repository_commit, "")
-    deployment_mode          = var.deployment_mode
+    repository_commit        = var.repository_commit != null ? var.repository_commit : ""
     ollama_version           = var.ollama_version
     ollama_model             = var.ollama_model
     additional_ollama_models = join(" ", var.additional_ollama_models)
