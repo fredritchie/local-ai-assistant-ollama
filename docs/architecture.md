@@ -1,7 +1,7 @@
 # Architecture
 
-The same application runs locally, inside Docker, on an Ansible-managed
-pair of Debian-family hosts, or on Terraform-managed AWS microservices.
+This branch provisions AWS infrastructure with Terraform and configures both
+microservices with Ansible.
 
 ![Repository and AWS architecture](architecture.svg)
 
@@ -19,33 +19,22 @@ is required.
 4. Ollama runs the selected model on the local CPU/GPU and streams chunks back.
 5. Streamlit renders chunks as they arrive and stores the completed response.
 
-## AWS provisioning path
+## Provisioning path
 
 Terraform creates a public subnet for a small T-family Streamlit instance and a
 private subnet for a `g4dn.xlarge` Ollama instance. A NAT gateway gives the
 private service outbound-only access for packages and models. Ollama port
 `11434` accepts traffic only from the Streamlit security group.
 
-In the default `server_configuration = "cloud-init"` mode, cloud-init then:
-
-1. The private GPU bootstrap installs Ollama, binds it to the private network,
-   and pulls the configured models.
-2. The public app bootstrap waits for the private API, clones the configured
-   revision, and starts Streamlit natively or in Docker.
-3. Each service writes independent completion or failure markers.
-
-## Ansible configuration path
-
-The Ansible playbook applies the same contract to two hosts:
+The Ansible playbook then:
 
 1. Configures and verifies the private Ollama host.
 2. Connects to that host through the public Streamlit bastion when deployed by
    Terraform.
 3. Configures Streamlit with the private Ollama URL and verifies its health.
 
-The role is independently usable. The `deploy_with_ansible.sh` path asks
-Terraform to omit application user data, enables CIDR-restricted SSH, generates
-an ignored inventory from Terraform outputs, and makes Ansible the sole server
+The `deploy_with_ansible.sh` wrapper enables CIDR-restricted SSH, generates an
+ignored inventory from Terraform outputs, and makes Ansible the sole server
 configuration mechanism.
 
 ## Trust boundaries

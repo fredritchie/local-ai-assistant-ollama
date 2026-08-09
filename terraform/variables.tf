@@ -78,17 +78,6 @@ variable "enable_ssh" {
   default     = false
 }
 
-variable "server_configuration" {
-  description = "Server configuration system: cloud-init bootstrap or external Ansible."
-  type        = string
-  default     = "cloud-init"
-
-  validation {
-    condition     = contains(["cloud-init", "ansible"], var.server_configuration)
-    error_message = "server_configuration must be either cloud-init or ansible."
-  }
-}
-
 variable "instance_type" {
   description = "Private Ollama GPU instance type."
   type        = string

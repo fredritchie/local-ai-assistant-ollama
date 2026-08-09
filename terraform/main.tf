@@ -194,16 +194,12 @@ resource "aws_security_group" "ollama" {
     security_groups = [aws_security_group.app.id]
   }
 
-  dynamic "ingress" {
-    for_each = var.server_configuration == "ansible" ? [1] : []
-
-    content {
-      description     = "SSH through Streamlit bastion for Ansible"
-      protocol        = "tcp"
-      from_port       = 22
-      to_port         = 22
-      security_groups = [aws_security_group.app.id]
-    }
+  ingress {
+    description     = "SSH through Streamlit bastion for Ansible"
+    protocol        = "tcp"
+    from_port       = 22
+    to_port         = 22
+    security_groups = [aws_security_group.app.id]
   }
 
   egress {
@@ -292,17 +288,6 @@ resource "aws_instance" "ollama" {
   iam_instance_profile        = aws_iam_instance_profile.app.name
   associate_public_ip_address = false
 
-  user_data = var.server_configuration == "cloud-init" ? templatefile(
-    "${path.module}/ollama_user_data.sh.tftpl",
-    {
-      ollama_version           = var.ollama_version
-      ollama_model             = var.ollama_model
-      additional_ollama_models = join(" ", var.additional_ollama_models)
-    }
-  ) : null
-
-  user_data_replace_on_change = true
-
   root_block_device {
     volume_type           = "gp3"
     volume_size           = var.root_volume_size
@@ -317,8 +302,8 @@ resource "aws_instance" "ollama" {
 
   lifecycle {
     precondition {
-      condition     = var.server_configuration != "ansible" || var.enable_ssh
-      error_message = "enable_ssh must be true when server_configuration is ansible."
+      condition     = var.enable_ssh
+      error_message = "enable_ssh must be true for the Ansible deployment."
     }
   }
 
@@ -332,7 +317,7 @@ resource "aws_instance" "ollama" {
     Name                = "${var.project_name}-ollama-gpu"
     Environment         = var.environment
     Role                = "ollama-inference"
-    ServerConfiguration = var.server_configuration
+    ServerConfiguration = "ansible"
     ForceDestroy        = tostring(var.force_destroy_skip_os_shutdown)
   }
 
@@ -352,20 +337,6 @@ resource "aws_instance" "app" {
   iam_instance_profile        = aws_iam_instance_profile.app.name
   associate_public_ip_address = true
 
-  user_data = var.server_configuration == "cloud-init" ? templatefile(
-    "${path.module}/app_user_data.sh.tftpl",
-    {
-      repository_url     = var.repository_url
-      repository_branch  = var.repository_branch
-      repository_commit  = var.repository_commit != null ? var.repository_commit : ""
-      deployment_mode    = var.deployment_mode
-      ollama_model       = var.ollama_model
-      ollama_private_url = "http://${aws_instance.ollama.private_ip}:11434"
-    }
-  ) : null
-
-  user_data_replace_on_change = true
-
   root_block_device {
     volume_type           = "gp3"
     volume_size           = var.app_root_volume_size
@@ -380,8 +351,8 @@ resource "aws_instance" "app" {
 
   lifecycle {
     precondition {
-      condition     = var.server_configuration != "ansible" || var.enable_ssh
-      error_message = "enable_ssh must be true when server_configuration is ansible."
+      condition     = var.enable_ssh
+      error_message = "enable_ssh must be true for the Ansible deployment."
     }
   }
 
@@ -395,7 +366,7 @@ resource "aws_instance" "app" {
     Name                = "${var.project_name}-streamlit"
     Environment         = var.environment
     Role                = "streamlit-web"
-    ServerConfiguration = var.server_configuration
+    ServerConfiguration = "ansible"
     ForceDestroy        = tostring(var.force_destroy_skip_os_shutdown)
   }
 

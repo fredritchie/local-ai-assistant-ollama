@@ -38,11 +38,6 @@ output "application_health_check_command" {
   value       = "curl --fail --show-error http://${aws_instance.app.public_ip}:8501/_stcore/health"
 }
 
-output "wait_for_application_command" {
-  description = "Command that waits for both services and application readiness."
-  value       = "./wait_for_application.sh"
-}
-
 output "deployment_mode" {
   description = "Configured application runtime mode."
   value       = var.deployment_mode
@@ -50,7 +45,7 @@ output "deployment_mode" {
 
 output "server_configuration" {
   description = "System responsible for configuring the EC2 instance."
-  value       = var.server_configuration
+  value       = "ansible"
 }
 
 output "ansible_variables" {

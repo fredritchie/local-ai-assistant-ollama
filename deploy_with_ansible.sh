@@ -56,13 +56,7 @@ terraform -chdir="$TERRAFORM_DIR" init -input=false
 echo "Creating the VM and network resources..."
 terraform -chdir="$TERRAFORM_DIR" apply \
     "$@" \
-    -var="server_configuration=ansible" \
     -var="enable_ssh=true"
-
-if [[ "$(terraform -chdir="$TERRAFORM_DIR" output -raw server_configuration)" != "ansible" ]]; then
-    echo "Terraform did not select Ansible server configuration." >&2
-    exit 1
-fi
 
 PUBLIC_IP="$(terraform -chdir="$TERRAFORM_DIR" output -raw public_ip)"
 OLLAMA_PRIVATE_IP="$(

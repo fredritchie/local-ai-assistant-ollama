@@ -79,8 +79,8 @@ Run:
 ./deploy_with_ansible.sh
 ```
 
-The wrapper forces Terraform's `server_configuration` to `ansible` and enables
-restricted SSH. It creates an inventory for both instances, uses ProxyJump
+The wrapper enables restricted SSH for the Ansible-only infrastructure. It
+creates an inventory for both instances, uses ProxyJump
 through Streamlit for the private host, records both host keys, and passes the
 Terraform deployment variables to the playbook.
 
