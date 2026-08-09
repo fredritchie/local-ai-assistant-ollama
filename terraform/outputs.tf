@@ -23,28 +23,12 @@ output "application_health_check_command" {
   value       = "curl --fail --show-error http://${aws_instance.app.public_ip}:8501/_stcore/health"
 }
 
-output "wait_for_application_command" {
-  description = "Command that waits for bootstrap and application readiness."
-  value       = "./wait_for_application.sh"
-}
-
-output "deployment_mode" {
-  description = "Configured application runtime mode."
-  value       = var.deployment_mode
-}
-
-output "server_configuration" {
-  description = "System responsible for configuring the EC2 instance."
-  value       = var.server_configuration
-}
-
 output "ansible_variables" {
   description = "Application variables consumed by the Ansible deployment wrapper."
   value = {
     app_repository_url       = var.repository_url
     app_repository_branch    = var.repository_branch
-    app_repository_version   = coalesce(var.repository_commit, "")
-    app_deployment_mode      = var.deployment_mode
+    app_repository_version   = var.repository_commit != null ? var.repository_commit : ""
     ollama_version           = var.ollama_version
     ollama_primary_model     = var.ollama_model
     ollama_additional_models = var.additional_ollama_models

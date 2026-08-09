@@ -16,6 +16,6 @@ test_*.py
 screenshots/
 README.md
 terraform/
+ansible/
 
-server_script.sh
-docker_setup.sh
+deploy_with_ansible.sh

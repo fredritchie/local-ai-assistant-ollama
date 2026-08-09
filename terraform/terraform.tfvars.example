@@ -6,10 +6,8 @@ allowed_app_cidr = "203.0.113.10/32"
 # Optional overrides:
 # enable_ssh       = true
 # key_name         = "local_llm_aws_vm_key"
-# server_configuration = "cloud-init" # Valid values: cloud-init, ansible
-# repository_branch = "main"
+# repository_branch = "feature/aws-ec2-ansible-docker"
 # repository_commit = "0123456789abcdef0123456789abcdef01234567"
-# deployment_mode   = "native" # Valid values: native, docker
 # ollama_version    = "0.32.0"
 # force_destroy_skip_os_shutdown = false
 # ollama_model       = "llama3.2:3b"
