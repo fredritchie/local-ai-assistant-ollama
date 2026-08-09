@@ -41,6 +41,31 @@ Local Docker
 Local native — START HERE
 ```
 
+## Branch descriptions
+
+- [`feature/local-native`](../../tree/feature/local-native) runs Ollama and the
+  Streamlit application directly on the local machine with Python.
+- [`feature/local-docker`](../../tree/feature/local-docker) keeps Ollama on the
+  host and packages the Streamlit application in a local Docker container.
+- [`feature/aws-ec2-userdata-native`](../../tree/feature/aws-ec2-userdata-native)
+  uses Terraform and EC2 user data to install native Ollama and Streamlit on a
+  single public `g4dn.xlarge` instance.
+- [`feature/aws-ec2-userdata-docker`](../../tree/feature/aws-ec2-userdata-docker)
+  uses Terraform and EC2 user data to run Ollama natively and Streamlit in
+  Docker on a single public `g4dn.xlarge` instance.
+- [`feature/aws-ec2-ansible-native`](../../tree/feature/aws-ec2-ansible-native)
+  provisions one public GPU EC2 instance with Terraform and configures native
+  Ollama and Streamlit services with Ansible.
+- [`feature/aws-ec2-ansible-docker`](../../tree/feature/aws-ec2-ansible-docker)
+  provisions one public GPU EC2 instance with Terraform, then uses Ansible to
+  manage native Ollama and a Dockerized Streamlit application.
+- [`feature/aws-ec2-ansible-microservices-native`](../../tree/feature/aws-ec2-ansible-microservices-native)
+  separates native Streamlit onto a public general-purpose EC2 instance and
+  Ollama onto a private GPU EC2 instance, both configured by Ansible.
+- [`feature/aws-ec2-ansible-microservices-docker`](../../tree/feature/aws-ec2-ansible-microservices-docker)
+  uses the same public/private microservice architecture while packaging the
+  public Streamlit service as a Docker container.
+
 ## Start locally
 
 Native Python:
