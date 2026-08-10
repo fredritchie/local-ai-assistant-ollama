@@ -284,6 +284,7 @@ data "aws_iam_policy_document" "github_deploy" {
       "secretsmanager:DescribeSecret",
       "ssm:AddTagsToResource",
       "ssm:DeleteParameter",
+      "ssm:DescribeParameters",
       "ssm:GetParameter*",
       "ssm:ListTagsForResource",
       "ssm:PutParameter",

@@ -83,7 +83,7 @@ resource "aws_db_instance" "chat" {
   identifier_prefix = "${local.name_prefix}-chat-"
 
   engine                = "postgres"
-  engine_version        = "16.6"
+  engine_version        = "16.14"
   instance_class        = var.database_instance_class
   allocated_storage     = var.database_allocated_storage
   max_allocated_storage = var.database_allocated_storage * 2
