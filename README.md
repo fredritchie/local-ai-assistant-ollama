@@ -4,6 +4,11 @@ This branch contains the local Docker deployment. Streamlit runs in a
 non-root container and connects to Ollama on the host. It does not include AWS,
 Terraform, or Ansible configuration.
 
+![Local Docker architecture](docs/architecture.svg)
+
+See [Architecture](docs/architecture.md) for the container boundary, host
+networking variants, and request sequence.
+
 ## Quick start
 
 ```bash
