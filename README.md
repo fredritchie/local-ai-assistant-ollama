@@ -39,6 +39,8 @@ the implementation branches linked below.
 The table is ordered from the most advanced implementation to the simplest
 foundation. Each row states what it adds over the branch immediately below it.
 
+![Architecture evolution across all portfolio branches](docs/architecture-evolution.svg)
+
 | Branch | Description | Advantage over the previous branch |
 |---|---|---|
 | [AWS production HA](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-production-ha) | The final portfolio branch adds a multi-AZ public ALB, private app and GPU Auto Scaling Groups, an internal Ollama ALB, Nginx on port 80, ECR delivery, Packer AMIs, managed configuration, remote state, WAF, observability, tests, and optional controlled CI/CD. | Turns the separated Docker architecture into a highly available, immutable, observable, and promotion-driven platform with documented security, recovery, model lifecycle, and cost controls. |
@@ -50,26 +52,6 @@ foundation. Each row states what it adds over the branch immediately below it.
 | [AWS EC2 user data native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-userdata-native) | Terraform provisions a public `g4dn.xlarge`, and EC2 user data installs native Ollama and Streamlit. | Introduces repeatable AWS infrastructure, GPU inference, encrypted storage, and remote management. |
 | [Local Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/local-docker) | Ollama runs on the local host while Streamlit runs in a Docker container. | Adds an isolated and reproducible application runtime. |
 | [Local native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/local-native) | Python, Streamlit, and Ollama run directly on one local machine. | Establishes the simplest, lowest-cost foundation for development. |
-
-```text
-AWS production HA
-                  ↑
-AWS EC2 Ansible microservices Docker
-                  ↑
-AWS EC2 Ansible microservices native
-                  ↑
-AWS EC2 Ansible Docker
-                  ↑
-AWS EC2 Ansible native
-                  ↑
-AWS EC2 user-data Docker
-                  ↑
-AWS EC2 user-data native
-                  ↑
-Local Docker
-                  ↑
-Local native
-```
 
 ## Repository approach
 
