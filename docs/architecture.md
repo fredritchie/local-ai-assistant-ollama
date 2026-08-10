@@ -12,6 +12,7 @@ Client
   → Streamlit container on localhost port 8501
   → internal Ollama ALB on port 11434
   → private g4dn.xlarge Ollama target
+  → private PostgreSQL RDS (users and chat history)
 ```
 
 The public ALB and both Auto Scaling Groups span two Availability Zones. The
@@ -37,11 +38,12 @@ urgent. See the [AWS target health behavior](https://docs.aws.amazon.com/elastic
 
 ## Session behavior
 
-Streamlit session state is process-local. Load-balancer stickiness keeps a
-healthy browser session on one target, but instance replacement can reset the
-conversation. This design provides service availability, not durable chat
-history. Add an encrypted external session store before promising conversation
-recovery across failures.
+Streamlit session state is process-local, so load-balancer movement can reset
+the active browser view. Users, conversations, and messages are written to a
+private encrypted PostgreSQL RDS instance after every message. On sign-in, the
+sidebar lists the user's prior conversations, allowing recovery after a browser
+or application-instance restart. RDS is multi-AZ in production and retains
+automated backups for the configured retention period.
 
 ## Environment differences
 

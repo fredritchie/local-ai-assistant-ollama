@@ -74,3 +74,35 @@ MAX_HISTORY_MESSAGES = max(
     1,
     int(_setting("MAX_HISTORY_MESSAGES", "20")),
 )
+
+# RDS supplies these values through its managed Secrets Manager secret.  They
+# are intentionally blank locally unless a PostgreSQL database is configured.
+DATABASE_HOST = _setting("DATABASE_HOST", REMOTE_CONFIGURATION.get("HOST", ""))
+DATABASE_PORT = max(
+    1,
+    int(_setting("DATABASE_PORT", REMOTE_CONFIGURATION.get("PORT", "5432"))),
+)
+DATABASE_NAME = _setting("DATABASE_NAME", REMOTE_CONFIGURATION.get("DBNAME", "localai"))
+DATABASE_USERNAME = _setting(
+    "DATABASE_USERNAME", REMOTE_CONFIGURATION.get("USERNAME", "")
+)
+DATABASE_PASSWORD = _setting(
+    "DATABASE_PASSWORD", REMOTE_CONFIGURATION.get("PASSWORD", "")
+)
+DATABASE_SSLMODE = _setting("DATABASE_SSLMODE", "require")
+
+# Default admin credentials: username "admin", password "changeme".
+# Override via ADMIN_USERNAME and ADMIN_PASSWORD_HASH (bcrypt) in production.
+_DEFAULT_ADMIN_PASSWORD_HASH = (
+    "$2b$12$nvfStXs4ON327eP6n6vR9OxG8IUFYEMLLIHzxp/9Mi9GaBHFN2CcK"
+)
+
+ADMIN_USERNAME = _setting("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD_HASH = _setting("ADMIN_PASSWORD_HASH", _DEFAULT_ADMIN_PASSWORD_HASH)
+
+AUTH_ENABLED = _setting("AUTH_ENABLED", "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}

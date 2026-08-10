@@ -4,7 +4,7 @@
 #checkov:skip=CKV_AWS_145:ALB access logging supports Amazon S3-managed encryption, not SSE-KMS.
 resource "aws_s3_bucket" "alb_logs" {
   bucket        = substr("${local.name_prefix}-alb-logs-${data.aws_caller_identity.current.account_id}", 0, 63)
-  force_destroy = var.environment != "prod"
+  force_destroy = var.environment != "prod" || var.force_destroy_log_bucket
   tags          = local.common_tags
 }
 

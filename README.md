@@ -23,7 +23,8 @@ healthy Auto Scaling targets across two Availability Zones.
 - Cost-reduced development capacity with one app, one GPU, and one NAT Gateway
 - Immutable ECR image digests, tag protection, scanning, and retention
 - Packer AMIs configured by Ansible, with launch-time self-configuration
-- SSM Parameter Store configuration and optional Secrets Manager access
+- Persistent PostgreSQL RDS for users and durable per-user chat history
+- SSM Parameter Store configuration and Secrets Manager-managed RDS credentials
 - Versioned S3 Terraform state with S3-native locking and KMS encryption
 - JSON logs, CloudWatch Agent metrics, GPU metrics, dashboards, alarms, and traces
 - Model digest verification, dedicated EBS cache volumes, and snapshot support
@@ -102,10 +103,11 @@ Terraform writes non-secret runtime values under:
 /local-ai-assistant/ENVIRONMENT/ollama/
 ```
 
-The application retrieves configuration through its EC2 IAM role. Optional
-Secrets Manager ARNs are supplied separately; Terraform does not create or
-store secret values. Environment variables remain available only as local or
-emergency overrides.
+The application retrieves configuration through its EC2 IAM role. RDS
+generates and manages its database secret in Secrets Manager, and Terraform
+grants the app role access automatically. Optional extra Secrets Manager ARNs
+are supplied separately. Environment variables remain available only as local
+or emergency overrides.
 
 ## CI/CD
 
@@ -115,6 +117,9 @@ deployment workflow builds an image, records its digest, creates a Terraform
 plan, uploads the plan artifact, and applies only when explicitly requested.
 
 See [CI/CD and promotion](docs/cicd.md).
+
+For complete environment setup, deployment, promotion, HTTPS, alerting, and
+teardown instructions, see the [detailed deployment guide](docs/deployment-guide.md).
 
 ## Operations and safety
 
@@ -128,9 +133,8 @@ See [CI/CD and promotion](docs/cicd.md).
 
 ## Important limitations
 
-- Streamlit session state is stored in an individual app process. ALB
-  stickiness reduces unnecessary movement, but an instance failure can reset an
-  active chat session. Durable sessions would require an external data store.
+- Streamlit session state is stored in an individual app process, but signed-in
+  users can reopen all saved conversations from persistent RDS chat history.
 - A production deployment with two continuously running GPU instances is
   expensive. Use `dev` for portfolio demonstrations and destroy it when idle.
 - Model tags can change upstream. Production only accepts the digest recorded

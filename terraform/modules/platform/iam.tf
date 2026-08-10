@@ -68,11 +68,11 @@ data "aws_iam_policy_document" "app" {
   }
 
   dynamic "statement" {
-    for_each = length(var.secret_arns) > 0 ? [1] : []
+    for_each = length(local.app_secret_arns) > 0 ? [1] : []
     content {
       sid       = "ReadApprovedSecrets"
       actions   = ["secretsmanager:GetSecretValue"]
-      resources = var.secret_arns
+      resources = local.app_secret_arns
     }
   }
 

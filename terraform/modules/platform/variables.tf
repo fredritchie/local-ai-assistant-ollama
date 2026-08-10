@@ -258,7 +258,7 @@ variable "log_retention_days" {
 }
 
 variable "alarm_email" {
-  description = "Optional email address for SNS alarms. Confirmation is required."
+  description = "Email address for SNS health-check and operational alarms. AWS subscription confirmation is required."
   type        = string
   default     = null
 }
@@ -291,6 +291,40 @@ variable "enable_deletion_protection" {
   description = "Protect ALBs from accidental deletion."
   type        = bool
   default     = true
+}
+
+variable "force_destroy_log_bucket" {
+  description = "Allow Terraform to remove every version in the ALB access-log bucket during a deliberate destroy."
+  type        = bool
+  default     = false
+}
+
+variable "database_instance_class" {
+  description = "RDS PostgreSQL instance class used for identities and chat history."
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "database_allocated_storage" {
+  description = "Initial encrypted RDS storage in GiB."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.database_allocated_storage >= 20
+    error_message = "database_allocated_storage must be at least 20 GiB."
+  }
+}
+
+variable "database_backup_retention_days" {
+  description = "Number of days RDS automated backups retain chat history."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.database_backup_retention_days >= 1 && var.database_backup_retention_days <= 35
+    error_message = "database_backup_retention_days must be between 1 and 35."
+  }
 }
 
 variable "tags" {

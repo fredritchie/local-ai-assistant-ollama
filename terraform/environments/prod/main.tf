@@ -25,5 +25,6 @@ module "platform" {
   log_retention_days         = 30
   alarm_email                = var.alarm_email
   secret_arns                = var.secret_arns
-  enable_deletion_protection = true
+  enable_deletion_protection = var.enable_deletion_protection
+  force_destroy_log_bucket   = var.force_destroy_log_bucket
 }

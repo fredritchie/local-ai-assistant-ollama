@@ -7,6 +7,8 @@
 - App instances accept port 80 only from the public ALB security group.
 - The internal ALB accepts port 11434 only from the app security group.
 - GPU instances accept port 11434 only from the internal ALB security group.
+- PostgreSQL RDS accepts port 5432 only from the app security group and has no
+  public endpoint.
 - No SSH ingress or bastion is created. Use Systems Manager Session Manager.
 
 The instances currently retain general outbound access through NAT because
@@ -22,9 +24,12 @@ read its Parameter Store hierarchy, publish telemetry, and read only explicitly
 listed secret ARNs. The GPU role reads only model parameters and publishes
 telemetry.
 
-Do not pass a secret value through Terraform. Terraform state would retain it.
-Create the secret separately, grant the app role its ARN through `secret_arns`,
-and store a JSON object whose keys correspond to application settings.
+RDS generates and owns its database password through its managed Secrets
+Manager secret. Terraform only references that secret ARN, and grants the app
+role access automatically. Do not pass other secret values through Terraform.
+Create those secrets separately, grant the app role their ARN through
+`secret_arns`, and store a JSON object whose keys correspond to application
+settings.
 
 Parameter Store is used for ordinary runtime configuration. Secrets Manager is
 reserved for credentials requiring stronger lifecycle or rotation controls.
@@ -59,9 +64,35 @@ the AWS Common Rule Set, and Known Bad Inputs rules; authorization headers are
 redacted from WAF logs. Treat these managed rules as a baseline and tune them
 against observed traffic before exposing the service broadly.
 
+## Application authentication
+
+The Streamlit app requires sign-in before chat is available. At startup it
+creates the configured admin account in PostgreSQL if it does not already
+exist; it never overwrites an existing password:
+
+- Username: `admin`
+- Password: `changeme`
+
+Change these before exposing the service. Set `ADMIN_USERNAME` and
+`ADMIN_PASSWORD_HASH` (bcrypt) through environment variables or Secrets Manager.
+Set `AUTH_ENABLED=false` only for local development without a login gate.
+
+Generate a bcrypt hash for a new password:
+
+```bash
+python -c "import bcrypt; print(bcrypt.hashpw(b'your-password', bcrypt.gensalt()).decode())"
+```
+
+Store production credentials in Secrets Manager as JSON, for example:
+
+```json
+{"ADMIN_USERNAME": "admin", "ADMIN_PASSWORD_HASH": "$2b$12$..."}
+```
+
+Grant the app role access by adding the secret ARN to `secret_arns` in Terraform.
+
 ## Remaining production work
 
-- Add authentication and authorization before allowing public use.
 - Review IAM with Access Analyzer after real deployment activity.
 - Enable organization-level CloudTrail, GuardDuty, Security Hub, AWS Config,
   and centralized log archival where applicable.

@@ -14,6 +14,24 @@ Open the dashboard named by:
 terraform -chdir=terraform/environments/prod output -raw dashboard_name
 ```
 
+## Health-check email alerts
+
+The public application target group checks `GET /healthz` every 15 seconds.
+After three failed checks, CloudWatch raises the `app-unhealthy` alarm (after
+three one-minute alarm periods). The internal Ollama target group is monitored
+in the same way by the `gpu-unhealthy` alarm. Both alarm and recovery events
+are published to the environment's SNS alarm topic.
+
+Set `alarm_email` in the environment `terraform.tfvars` before applying, then
+confirm the SNS subscription message that AWS emails to that address. Verify
+the configured topic with:
+
+```bash
+terraform -chdir=terraform/environments/prod output -raw health_alert_topic_arn
+```
+
+Without confirmation, AWS does not deliver alert emails.
+
 ## Instance access
 
 Find instances by ASG or tag and start a Session Manager session:

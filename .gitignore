@@ -6,6 +6,7 @@ __pycache__/
 htmlcov/
 *.pyc
 .env
+.github/deployment-config/operator.env
 .DS_Store
 .vscode/
 

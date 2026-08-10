@@ -20,17 +20,26 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Validate renewal configuration
-        env:
-          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          DUCKDNS_SECRET_ARN: ${{ vars.DUCKDNS_SECRET_ARN }}
-          DUCKDNS_SUBDOMAIN: ${{ vars.DUCKDNS_SUBDOMAIN }}
-          DUCKDNS_IPV4: ${{ vars.DUCKDNS_IPV4 }}
-          LETSENCRYPT_EMAIL: ${{ vars.LETSENCRYPT_EMAIL }}
-          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+      - name: Load non-secret production configuration
+        id: config
         run: |
-          for variable in AWS_DEPLOY_ROLE_ARN DUCKDNS_SECRET_ARN DUCKDNS_SUBDOMAIN \
-            DUCKDNS_IPV4 LETSENCRYPT_EMAIL ACM_CERTIFICATE_ARN; do
+          config_file=.github/deployment-config/prod.env
+          if [[ ! -f "$config_file" ]]; then
+            echo "Missing $config_file; copy and configure its .example file" >&2
+            exit 2
+          fi
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -z "$line" || "$line" == \#* ]] && continue
+            if [[ ! "$line" =~ ^[A-Z][A-Z0-9_]*= ]]; then
+              echo "Invalid configuration line in $config_file" >&2
+              exit 2
+            fi
+            echo "$line" >>"$GITHUB_ENV"
+            echo "$line" >>"$GITHUB_OUTPUT"
+          done <"$config_file"
+      - name: Validate renewal configuration
+        run: |
+          for variable in AWS_DEPLOY_ROLE_ARN DUCKDNS_SUBDOMAIN LETSENCRYPT_EMAIL; do
             if [[ -z "${!variable:-}" ]]; then
               echo "GitHub environment variable $variable is required" >&2
               exit 2
@@ -38,23 +47,28 @@ jobs:
           done
       - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ steps.config.outputs.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ap-south-1
+      - name: Resolve managed certificate configuration
+        run: |
+          duckdns_ip=$(aws ssm get-parameter \
+            --name /local-ai-assistant/prod/letsencrypt/duckdns_ipv4 \
+            --query Parameter.Value --output text)
+          certificate_arn=$(aws ssm get-parameter \
+            --name /local-ai-assistant/prod/letsencrypt/acm_certificate_arn \
+            --query Parameter.Value --output text)
+          echo "DUCKDNS_IPV4=$duckdns_ip" >>"$GITHUB_ENV"
+          echo "ACM_CERTIFICATE_ARN=$certificate_arn" >>"$GITHUB_ENV"
       - name: Install Certbot
         run: |
           sudo apt-get update
           sudo apt-get install --yes certbot
       - name: Renew and reimport certificate
         env:
-          DUCKDNS_SECRET_ARN: ${{ vars.DUCKDNS_SECRET_ARN }}
-          DUCKDNS_SUBDOMAIN: ${{ vars.DUCKDNS_SUBDOMAIN }}
-          DUCKDNS_IPV4: ${{ vars.DUCKDNS_IPV4 }}
-          LETSENCRYPT_EMAIL: ${{ vars.LETSENCRYPT_EMAIL }}
-          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
           AWS_REGION: ap-south-1
         run: |
           DUCKDNS_TOKEN=$(aws secretsmanager get-secret-value \
-            --secret-id "$DUCKDNS_SECRET_ARN" \
+            --secret-id local-ai-assistant/duckdns-token \
             --query SecretString --output text)
           echo "::add-mask::$DUCKDNS_TOKEN"
           export DUCKDNS_TOKEN

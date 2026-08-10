@@ -4,11 +4,14 @@ import time
 
 import streamlit as st
 
+from auth import bootstrap_admin, logout, require_authentication
+from chat_store import list_conversations, load_messages, save_message
 from config import (
     DEFAULT_MODEL,
     DEFAULT_TEMPERATURE,
     MAX_HISTORY_MESSAGES,
 )
+from database import DatabaseError, initialize_database
 from observability import logger
 from ollama_client import OllamaClientError, list_models, stream_chat
 
@@ -17,6 +20,15 @@ st.set_page_config(
     page_icon="🤖",
     layout="centered",
 )
+
+try:
+    initialize_database()
+    bootstrap_admin()
+except DatabaseError as exc:
+    st.error(str(exc))
+    st.stop()
+
+require_authentication()
 
 st.title("Fred's AI Assistant")
 st.caption("Private AI inference with Ollama and Streamlit.")
@@ -58,12 +70,34 @@ with st.sidebar:
         step=0.1,
     )
 
-    if st.button("Clear chat", use_container_width=True):
+    if st.button("New chat", use_container_width=True):
         st.session_state.messages = []
+        st.session_state.active_conversation_id = None
         st.rerun()
+
+    st.divider()
+    st.caption("Chat history")
+    conversations = list_conversations(st.session_state.user["id"])
+    for conversation in conversations:
+        if st.button(
+            conversation["title"],
+            key=f"conversation-{conversation['id']}",
+            use_container_width=True,
+        ):
+            st.session_state.active_conversation_id = conversation["id"]
+            st.session_state.messages = load_messages(
+                conversation["id"], st.session_state.user["id"]
+            )
+            st.rerun()
+
+    if st.button("Sign out", use_container_width=True):
+        logout()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "active_conversation_id" not in st.session_state:
+    st.session_state.active_conversation_id = None
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
@@ -79,6 +113,12 @@ if prompt:
     }
 
     st.session_state.messages.append(user_message)
+    st.session_state.active_conversation_id = save_message(
+        st.session_state.active_conversation_id,
+        st.session_state.user["id"],
+        "user",
+        prompt,
+    )
 
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -113,4 +153,10 @@ if prompt:
             "role": "assistant",
             "content": full_response,
         }
+    )
+    save_message(
+        st.session_state.active_conversation_id,
+        st.session_state.user["id"],
+        "assistant",
+        full_response,
     )

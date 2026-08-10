@@ -7,7 +7,7 @@ resource "aws_launch_template" "app" {
     app_image_uri       = var.app_image_uri
     aws_region          = var.aws_region
     parameter_prefix    = local.parameter_prefix
-    secret_arns         = join(",", var.secret_arns)
+    secret_arns         = join(",", local.app_secret_arns)
     app_log_group       = aws_cloudwatch_log_group.app.name
     nginx_log_group     = aws_cloudwatch_log_group.nginx.name
     bootstrap_log_group = aws_cloudwatch_log_group.bootstrap.name

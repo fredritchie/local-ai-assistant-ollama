@@ -67,3 +67,13 @@ output "selected_availability_zones" {
   description = "Failure domains selected for this deployment."
   value       = local.availability_zones
 }
+
+output "database_endpoint" {
+  description = "Private PostgreSQL endpoint used for persistent users and chat history."
+  value       = aws_db_instance.chat.address
+}
+
+output "database_secret_arn" {
+  description = "Secrets Manager ARN containing the RDS application credentials."
+  value       = aws_db_instance.chat.master_user_secret[0].secret_arn
+}

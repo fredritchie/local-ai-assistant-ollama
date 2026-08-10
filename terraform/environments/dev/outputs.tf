@@ -29,3 +29,18 @@ output "duckdns_ipv4" {
 output "global_accelerator_ipv4_addresses" {
   value = module.platform.global_accelerator_ipv4_addresses
 }
+
+output "database_endpoint" {
+  description = "Private RDS PostgreSQL endpoint for persistent users and chat history."
+  value       = module.platform.database_endpoint
+}
+
+output "database_secret_arn" {
+  description = "RDS-managed Secrets Manager credential ARN used by the application."
+  value       = module.platform.database_secret_arn
+}
+
+output "health_alert_topic_arn" {
+  description = "SNS topic publishing application and Ollama health-check alerts."
+  value       = module.platform.alarm_topic_arn
+}

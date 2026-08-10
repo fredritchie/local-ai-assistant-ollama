@@ -68,3 +68,15 @@ variable "secret_arns" {
   type    = list(string)
   default = []
 }
+
+variable "enable_deletion_protection" {
+  description = "Keep production ALB and RDS deletion protection enabled except during an approved teardown."
+  type        = bool
+  default     = true
+}
+
+variable "force_destroy_log_bucket" {
+  description = "Empty the versioned production ALB log bucket during an approved teardown."
+  type        = bool
+  default     = false
+}

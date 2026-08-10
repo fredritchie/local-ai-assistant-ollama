@@ -29,6 +29,7 @@ locals {
   )
   gpu_ami_id       = coalesce(var.gpu_ami_id, data.aws_ssm_parameter.gpu_dlami.value)
   primary_model    = var.model_manifest[0].name
+  app_secret_arns  = distinct(concat(var.secret_arns, [aws_db_instance.chat.master_user_secret[0].secret_arn]))
   parameter_prefix = "/${var.project_name}/${var.environment}"
   name_prefix      = "${var.project_name}-${var.environment}"
   public_hostname  = var.enable_duckdns ? "${var.duckdns_subdomain}.duckdns.org" : aws_lb.public.dns_name

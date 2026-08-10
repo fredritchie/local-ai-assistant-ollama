@@ -260,7 +260,9 @@ data "aws_iam_policy_document" "github_deploy" {
       "kms:TagResource",
       "kms:UntagResource",
       "logs:*",
+      "rds:*",
       "sns:*",
+      "secretsmanager:DescribeSecret",
       "ssm:AddTagsToResource",
       "ssm:DeleteParameter",
       "ssm:GetParameter*",
@@ -272,9 +274,19 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
-    sid       = "ReadDuckDNSRenewalToken"
-    actions   = ["secretsmanager:GetSecretValue"]
+    sid = "ManageDuckDNSRenewalToken"
+    actions = [
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:PutSecretValue",
+    ]
     resources = ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}/duckdns-*"]
+  }
+
+  statement {
+    sid       = "CreateDuckDNSRenewalToken"
+    actions   = ["secretsmanager:CreateSecret"]
+    resources = ["*"]
   }
 
   statement {

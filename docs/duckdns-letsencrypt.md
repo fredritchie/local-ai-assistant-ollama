@@ -18,45 +18,29 @@ ACM does not automatically renew imported certificates. The optional monthly
 workflow reissues the certificate and reimports it using the same ARN, so the
 ALB association remains unchanged.
 
-## Initial setup
+## Initial setup through CI/CD
 
-1. Create the chosen subdomain in DuckDNS and keep its token private.
-2. Store the plain token in Secrets Manager using the required name prefix:
+1. Create the chosen subdomain in DuckDNS and rotate its token if it has ever
+   been exposed.
+2. Configure the protected GitHub `prod` environment with these variables:
 
-   ```bash
-   aws secretsmanager create-secret \
-     --region ap-south-1 \
-     --name local-ai-assistant/duckdns-token \
-     --secret-string 'YOUR_DUCKDNS_TOKEN'
-   ```
+   | Variable | Value |
+   |---|---|
+   | `ENABLE_DUCKDNS` | `true` |
+   | `ENABLE_LETSENCRYPT` | `true` |
+   | `DUCKDNS_SUBDOMAIN` | Label only, such as `your-local-ai-assistant` |
+   | `LETSENCRYPT_EMAIL` | ACME account email address |
 
-3. For the first Terraform apply, temporarily use HTTP while creating the
-   Global Accelerator:
-
-   ```hcl
-   enable_https      = false
-   enable_duckdns    = true
-   duckdns_subdomain = "your-local-ai-assistant"
-   ```
-
-4. Apply the environment and retrieve the primary static address:
-
-   ```bash
-   duckdns_ip=$(terraform -chdir=terraform/environments/prod output -raw duckdns_ipv4)
-   export DUCKDNS_TOKEN='YOUR_DUCKDNS_TOKEN'
-   ./scripts/update_duckdns.sh your-local-ai-assistant "$duckdns_ip"
-   ```
-
-5. Install `certbot`, then issue and import the initial certificate:
-
-   ```bash
-   certificate_arn=$(./scripts/issue_letsencrypt_duckdns.sh \
-     you@example.com your-local-ai-assistant)
-   ```
-
-6. Set `enable_https = true` and `certificate_arn` to the returned ARN, then
-   review and apply the production plan again. HTTP redirects to HTTPS at the
+3. Add the replacement DuckDNS token as the `DUCKDNS_TOKEN` **environment
+   secret**, never as a variable or repository file.
+4. Run **Controlled deployment** with `environment=prod` and
+   `operation=deploy`. The workflow creates the Global Accelerator, updates
+   DuckDNS, issues the DNS-01 certificate, imports it into ACM, and applies the
+   final HTTPS configuration in the same run. HTTP redirects to HTTPS at the
    ALB; Nginx remains private on port `80`.
+
+The workflow stores the certificate ARN and accelerator IP in Parameter Store
+for future deploys and renewals. No private key is stored in Terraform state.
 
 ## Automated renewal
 
@@ -65,15 +49,12 @@ Configure these variables in the protected GitHub `prod` environment:
 | Variable | Value |
 |---|---|
 | `AWS_DEPLOY_ROLE_ARN` | Bootstrap deployment-role ARN |
-| `DUCKDNS_SECRET_ARN` | Secrets Manager ARN created above |
 | `DUCKDNS_SUBDOMAIN` | Label without `.duckdns.org` |
-| `DUCKDNS_IPV4` | Terraform `duckdns_ipv4` output |
 | `LETSENCRYPT_EMAIL` | ACME account email |
-| `ACM_CERTIFICATE_ARN` | Imported certificate ARN |
 
 `Renew DuckDNS Let's Encrypt certificate` runs monthly and can also be started
-manually. CloudWatch raises an alarm if the certificate has fewer than 30 days
-remaining.
+manually. It retrieves the managed values from AWS Parameter Store. CloudWatch
+raises an alarm if the certificate has fewer than 30 days remaining.
 
 ## Availability limitation
 
