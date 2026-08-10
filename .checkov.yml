@@ -1,0 +1,29 @@
+compact: true
+quiet: true
+skip-check:
+  # KMS key policies require wildcard self-resources and delegate through IAM.
+  - CKV_AWS_109
+  - CKV_AWS_111
+  - CKV_AWS_356
+  # Host-network Docker needs a hop limit of two for temporary EC2 role credentials.
+  - CKV_AWS_341
+  # Deletion protection is enabled in prod and disabled only for disposable dev.
+  - CKV_AWS_150
+  - CKV_AWS_293
+  # HTTP port 80 is explicit; public HTTPS is enabled when ACM is configured.
+  # Internal HTTP is isolated by private subnets and SG identities.
+  - CKV_AWS_2
+  - CKV_AWS_103
+  - CKV_AWS_378
+  - CKV2_AWS_20
+  # Retention is environment-specific because AI, WAF, and flow logs are costly.
+  - CKV_AWS_338
+  # Count-controlled WAF logging and managed Log4j rules are present in prod.
+  - CKV2_AWS_31
+  - CKV2_AWS_76
+  # Account-level CloudTrail/archival replaces recursive bucket logging and CRR.
+  - CKV_AWS_18
+  - CKV_AWS_144
+  - CKV2_AWS_62
+  # ALB access logs support S3-managed encryption, not SSE-KMS.
+  - CKV_AWS_145

@@ -1,114 +1,148 @@
-# Local AI Assistant with Ollama
+# Local AI Assistant — Production HA on AWS
 
-This repository demonstrates how one application
-can evolve from a simple local prototype into an automated, secure, and
-separated AWS deployment. The application is a Streamlit chat interface backed
-by locally hosted Ollama models.
+This is the final portfolio branch. It evolves the Docker and Ansible
+microservices deployment into a controlled, multi-AZ platform with immutable
+artifacts, autoscaling, managed configuration, observability, and environment
+separation.
 
-Instead of combining every deployment method in one codebase, each stage is
-maintained in a dedicated Git branch. This makes the progression easy to
-compare across local native execution, containers, AWS automation,
-configuration management, separated web and inference workloads, and the final
-production-style highly available platform.
+Streamlit is delivered as a multi-architecture image from Amazon ECR. Nginx
+exposes each application instance on port `80`, while Ollama runs only in
+private GPU subnets. Public and internal Application Load Balancers route to
+healthy Auto Scaling targets across two Availability Zones.
 
-The `main` branch is intentionally documentation-only and acts as the landing
-page for the portfolio. Runnable code and branch-specific instructions live in
-the implementation branches linked below.
+![Production architecture](docs/architecture.svg)
 
-## What this project demonstrates
+## Highlights
 
-- Python application development with Streamlit and Ollama
-- Native and Docker-based application packaging
-- Infrastructure as code with Terraform
-- Repeatable server configuration with Ansible
-- EC2 bootstrapping through user data and cloud-init
-- NVIDIA GPU inference on `g4dn.xlarge`
-- Public and private subnet design in a dedicated AWS VPC
-- Security groups, encrypted EBS volumes, IMDSv2, and Session Manager
-- Automated health checks, bootstrap status reporting, and failure diagnostics
-- Independent web and inference services with appropriate EC2 sizing
-- Multi-AZ load balancing, Auto Scaling, and explicit failure domains
-- Immutable ECR image promotion and Packer-built AMIs
-- SSM/Secrets Manager configuration, encrypted remote Terraform state, and WAF
-- CloudWatch logs, metrics, dashboards, alarms, traces, and GPU telemetry
-- Controlled optional CI/CD with GitHub OIDC and protected environments
-- CI checks for Python, shell scripts, Terraform, Ansible, Docker, and docs
+- Public ALB across two AZs with ACM TLS enabled by default in production
+- Optional DuckDNS hostname, stable Global Accelerator entry point, and
+  Let's Encrypt DNS-01 certificate imported into ACM
+- Private application ASG: Nginx `:80` to Dockerized Streamlit `:8501`
+- Private GPU ASG behind an internal Ollama ALB
+- Production capacity of two app and two `g4dn.xlarge` GPU instances
+- Cost-reduced development capacity with one app, one GPU, and one NAT Gateway
+- Immutable ECR image digests, tag protection, scanning, and retention
+- Packer AMIs configured by Ansible, with launch-time self-configuration
+- Persistent PostgreSQL RDS for users and durable per-user chat history
+- SSM Parameter Store configuration and Secrets Manager-managed RDS credentials
+- Versioned S3 Terraform state with S3-native locking and KMS encryption
+- JSON logs, CloudWatch Agent metrics, GPU metrics, dashboards, alarms, and traces
+- Model digest verification, dedicated EBS cache volumes, and snapshot support
+- Optional GitHub OIDC deployment workflow with protected environments
+- Terraform native tests, deployed smoke tests, security scans, and container tests
 
-## Deployment progression
+## Repository layout
 
-The table is ordered from the most advanced implementation to the simplest
-foundation. Each row states what it adds over the branch immediately below it.
+```text
+.
+├── app.py, config.py, ollama_client.py
+├── ansible/                 Packer image configuration role
+├── packer/                  Versioned app and GPU AMI builds
+├── models/                  Digest-locked model manifest
+├── scripts/                 Build, deploy, wait, diagnostics, and smoke tests
+├── terraform/
+│   ├── bootstrap/           State, ECR, KMS, and optional GitHub OIDC
+│   ├── environments/dev/    Cost-reduced environment state and settings
+│   ├── environments/prod/   Multi-AZ HA environment state and settings
+│   └── modules/platform/    Network, compute, IAM, load balancing, and telemetry
+├── tests/                   Unit and optional deployed integration tests
+└── docs/                    Architecture and operational guides
+```
 
-![Architecture evolution across all portfolio branches](docs/architecture-evolution.svg)
+## Deployment sequence
 
-| Branch | Description | Advantage over the previous branch |
-|---|---|---|
-| [AWS production HA](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-production-ha) | The final portfolio branch adds a multi-AZ public ALB, private app and GPU Auto Scaling Groups, an internal Ollama ALB, Nginx on port 80, ECR delivery, Packer AMIs, managed configuration, remote state, WAF, observability, tests, and optional controlled CI/CD. | Turns the separated Docker architecture into a highly available, immutable, observable, and promotion-driven platform with documented security, recovery, model lifecycle, and cost controls. |
-| [AWS EC2 Ansible microservices Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-docker) | Terraform creates separate public Streamlit and private GPU Ollama instances. Ansible manages Ollama natively and Streamlit as a Docker container. | Adds container isolation and reproducible image-based delivery to the separated architecture. |
-| [AWS EC2 Ansible microservices native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-native) | Terraform creates separate instances, while Ansible installs native Streamlit publicly and Ollama privately. | Isolates inference from the internet and allows the application and GPU tiers to be sized independently. |
-| [AWS EC2 Ansible Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-docker) | Terraform provisions one public GPU instance. Ansible manages native Ollama and Dockerized Streamlit on that instance. | Adds reproducible container packaging and runtime isolation. |
-| [AWS EC2 Ansible native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-native) | Terraform provisions one public GPU instance, and Ansible manages native Ollama and Streamlit services. | Adds repeatable, idempotent configuration and in-place application updates. |
-| [AWS EC2 user data Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-userdata-docker) | Terraform provisions one public GPU instance. EC2 user data installs native Ollama and launches Streamlit with Docker. | Adds container packaging to the automated AWS deployment. |
-| [AWS EC2 user data native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-userdata-native) | Terraform provisions a public `g4dn.xlarge`, and EC2 user data installs native Ollama and Streamlit. | Introduces repeatable AWS infrastructure, GPU inference, encrypted storage, and remote management. |
-| [Local Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/local-docker) | Ollama runs on the local host while Streamlit runs in a Docker container. | Adds an isolated and reproducible application runtime. |
-| [Local native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/local-native) | Python, Streamlit, and Ollama run directly on one local machine. | Establishes the simplest, lowest-cost foundation for development. |
+Production deployment is deliberately separated into controlled stages:
 
-## Repository approach
+1. Apply `terraform/bootstrap` once to create the protected state bucket, KMS
+   key, ECR repository, and optional GitHub OIDC role.
+2. Generate and review a digest-locked model manifest.
+3. Optionally build Packer AMIs. The standard Ubuntu and DLAMI sources remain a
+   supported fallback.
+4. Build the application image once and push it to ECR.
+5. Deploy `dev`, run smoke tests, and review CloudWatch telemetry.
+6. Promote the same immutable image digest and model manifest to `prod`.
 
-Every implementation branch is self-contained and includes only the files
-needed for that deployment method. Depending on the branch, this includes:
+See the [Terraform guide](terraform/README.md) for exact commands.
 
-- Application source code and automated tests
-- Dependency and environment configuration
-- Native startup scripts or a Dockerfile
-- Terraform configurations and example variables
-- EC2 bootstrap scripts with completion markers and failure reporting
-- Ansible inventories, roles, handlers, and deployment helpers
-- Architecture documentation and CI workflows
+## Manual image delivery
 
-The final production branch additionally includes environment-separated remote
-state, immutable artifacts, edge protection, autoscaling, observability,
-integration/infra tests, operational runbooks, and a documented cost model.
+After applying the bootstrap stack:
 
-This branch-per-stage structure keeps the learning path visible in Git history
-and prevents local, user-data, Ansible, native, Docker, and microservice
-concerns from becoming mixed together.
+```bash
+ECR_REPOSITORY_URL=$(terraform -chdir=terraform/bootstrap \
+  output -raw ecr_repository_url)
+IMAGE_URI=$(./scripts/build_and_push.sh "$ECR_REPOSITORY_URL")
+```
 
-## Engineering decisions highlighted
+`IMAGE_URI` contains an immutable ECR digest, not a mutable `latest` tag.
 
-- **Separation of concerns:** later branches place Streamlit and Ollama on
-  different instances and network tiers.
-- **Least exposure:** the microservice branches keep Ollama on a private subnet
-  and allow its API traffic only from the Streamlit security group.
-- **Reproducibility:** Terraform, cloud-init, Docker, and Ansible each provide a
-  progressively stronger deployment workflow.
-- **Operational visibility:** bootstrap markers, cloud-init failure reporting,
-  service health checks, and a wait helper make deployment status observable.
-- **Safe access:** AWS branches support Session Manager and optional
-  CIDR-restricted SSH instead of requiring unrestricted administrative ports.
-- **Cost awareness:** the branches make the tradeoffs between local execution,
-  a single EC2 instance, separated workloads, and production HA explicit.
-- **Production progression:** the final branch adds failure-domain-aware
-  capacity, ALBs, ECR digest promotion, secure runtime configuration, remote
-  state locking, WAF, telemetry, and controlled deployment approvals.
+## Manual environment deployment
 
-## Technology stack
+```bash
+export IMAGE_URI
+export STATE_BUCKET="your-terraform-state-bucket"
+export STATE_KMS_KEY_ID="arn:aws:kms:ap-south-1:ACCOUNT:key/UUID"
+./scripts/deploy.sh dev
+```
 
-| Area | Technologies |
-|---|---|
-| Application | Python, Streamlit, Ollama |
-| Containers | Docker |
-| Infrastructure | Terraform, AWS EC2, VPC, ALB, Auto Scaling, EBS, ECR, IAM, Systems Manager, Secrets Manager, WAF |
-| Configuration | EC2 user data, cloud-init, Ansible, Packer, systemd |
-| Observability | CloudWatch Logs, metrics, dashboards and alarms; X-Ray-compatible OTLP traces |
-| Quality | Pytest, Ruff, ShellCheck, TFLint, Checkov, Trivy, Terraform native tests, Ansible lint, GitHub Actions |
+After validating development, deploy the identical digest to production:
 
-## Explore the project
+```bash
+./scripts/deploy.sh prod
+```
 
-Select a branch from the deployment table to review its source code, README,
-prerequisites, configuration options, validation commands, and deployment
-workflow. Each branch is self-contained and can be reviewed independently as an
-example of its deployment approach.
+The production ALBs have deletion protection enabled. Disable it through a
+reviewed Terraform change before destroying production.
 
-AWS branches create billable resources in `ap-south-1`. Review the selected
-branch's Terraform plan before applying it and destroy unused environments.
+## Managed runtime configuration
+
+Terraform writes non-secret runtime values under:
+
+```text
+/local-ai-assistant/ENVIRONMENT/app/
+/local-ai-assistant/ENVIRONMENT/ollama/
+```
+
+The application retrieves configuration through its EC2 IAM role. RDS
+generates and manages its database secret in Secrets Manager, and Terraform
+grants the app role access automatically. Optional extra Secrets Manager ARNs
+are supplied separately. Environment variables remain available only as local
+or emergency overrides.
+
+## CI/CD
+
+CI runs automatically. Deployment is intentionally manual unless the optional
+GitHub OIDC role and protected `dev`/`prod` environments are configured. The
+deployment workflow builds an image, records its digest, creates a Terraform
+plan, uploads the plan artifact, and applies only when explicitly requested.
+
+See [CI/CD and promotion](docs/cicd.md).
+
+For complete environment setup, deployment, promotion, HTTPS, alerting, and
+teardown instructions, see the [detailed deployment guide](docs/deployment-guide.md).
+
+## Operations and safety
+
+- [Architecture and failure domains](docs/architecture.md)
+- [DuckDNS and Let's Encrypt HTTPS](docs/duckdns-letsencrypt.md)
+- [Security model](docs/security.md)
+- [Model lifecycle and rollback](docs/models.md)
+- [Operations, deployment, and recovery](docs/operations.md)
+- [Testing strategy](docs/testing.md)
+- [Cost estimate and GPU selection](docs/cost.md)
+
+## Important limitations
+
+- Streamlit session state is stored in an individual app process, but signed-in
+  users can reopen all saved conversations from persistent RDS chat history.
+- A production deployment with two continuously running GPU instances is
+  expensive. Use `dev` for portfolio demonstrations and destroy it when idle.
+- Model tags can change upstream. Production only accepts the digest recorded
+  in the reviewed model manifest; update that lock intentionally.
+- Production defaults to HTTPS and requires an ACM certificate and domain
+  configuration. Nginx still exposes port 80 only inside the private app tier.
+  Development can use public ALB HTTP for short-lived testing.
+
+AWS resources are created in `ap-south-1` and incur charges. Review every plan,
+confirm GPU quotas and Availability Zone capacity, and read the cost guide
+before applying.

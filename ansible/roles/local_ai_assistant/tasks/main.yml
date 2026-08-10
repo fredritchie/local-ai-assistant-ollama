@@ -1,0 +1,90 @@
+---
+- name: Validate immutable image variables
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == "Debian"
+      - local_ai_assistant_service_role in ["streamlit", "ollama"]
+      - local_ai_assistant_ollama_version is match("^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    quiet: true
+
+- name: Install common image packages
+  ansible.builtin.apt:
+    name:
+      - awscli
+      - ca-certificates
+      - curl
+      - jq
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install application image packages
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - nginx
+    state: present
+  when: local_ai_assistant_service_role == "streamlit"
+
+- name: Enable application image services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - docker
+    - nginx
+  when: local_ai_assistant_service_role == "streamlit"
+
+- name: Install XFS tools for the model cache
+  ansible.builtin.apt:
+    name: xfsprogs
+    state: present
+  when: local_ai_assistant_service_role == "ollama"
+
+- name: Read installed Ollama version
+  ansible.builtin.command: ollama --version
+  register: local_ai_assistant_ollama_version_result
+  changed_when: false
+  failed_when: false
+  when: local_ai_assistant_service_role == "ollama"
+
+- name: Download Ollama installer
+  ansible.builtin.get_url:
+    url: https://ollama.com/install.sh
+    dest: /tmp/ollama-install.sh
+    mode: "0755"
+  when:
+    - local_ai_assistant_service_role == "ollama"
+    - >-
+      local_ai_assistant_ollama_version_result.rc != 0 or
+      local_ai_assistant_ollama_version not in
+      local_ai_assistant_ollama_version_result.stdout
+
+- name: Install pinned Ollama version
+  ansible.builtin.command: /tmp/ollama-install.sh
+  environment:
+    HOME: /root
+    OLLAMA_VERSION: "{{ local_ai_assistant_ollama_version }}"
+  changed_when: true
+  when:
+    - local_ai_assistant_service_role == "ollama"
+    - >-
+      local_ai_assistant_ollama_version_result.rc != 0 or
+      local_ai_assistant_ollama_version not in
+      local_ai_assistant_ollama_version_result.stdout
+
+- name: Stop Ollama before creating the reusable image
+  ansible.builtin.systemd_service:
+    name: ollama
+    enabled: true
+    state: stopped
+  when: local_ai_assistant_service_role == "ollama"
+
+- name: Remove transient package data
+  ansible.builtin.apt:
+    autoclean: true
+    autoremove: true
+
+- name: Clear cloud-init state for the next launch
+  ansible.builtin.command: cloud-init clean --logs
+  changed_when: true

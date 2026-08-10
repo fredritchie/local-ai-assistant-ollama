@@ -1,0 +1,7 @@
+---
+- name: Build immutable Local AI Assistant machine image
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: local_ai_assistant

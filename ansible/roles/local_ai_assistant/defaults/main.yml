@@ -1,0 +1,3 @@
+---
+local_ai_assistant_service_role: streamlit
+local_ai_assistant_ollama_version: 0.32.0

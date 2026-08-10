@@ -6,8 +6,16 @@ __pycache__/
 htmlcov/
 *.pyc
 .env
+.github/deployment-config/operator.env
 .DS_Store
 .vscode/
+
+# Ansible host-specific inventory and secrets
+ansible/inventory.ini
+ansible/inventory.terraform.ini
+ansible/known_hosts.terraform
+ansible/known_hosts.terraform.tmp
+ansible/*.retry
 
 # Terraform runtime files and local secrets
 terraform/.terraform/
@@ -20,3 +28,9 @@ terraform/*.pem
 terraform/terraform.tfvars
 terraform/backend.tf
 terraform/backend.hcl
+
+# Packer runtime artifacts
+packer/manifest.json
+packer/packer_cache/
+
+*._*

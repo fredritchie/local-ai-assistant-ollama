@@ -1,0 +1,2 @@
+[image_build]
+localhost ansible_connection=local

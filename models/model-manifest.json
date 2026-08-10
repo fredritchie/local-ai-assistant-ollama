@@ -1,0 +1,9 @@
+[
+  {
+    "name": "llama3.2:3b",
+    "digest": "sha256:a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+    "preload": true,
+    "size_gib": 2.0,
+    "vram_gib": 4.0
+  }
+]

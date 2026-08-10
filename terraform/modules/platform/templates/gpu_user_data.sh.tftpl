@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+exec > >(tee -a /var/log/local-ai-bootstrap.log) 2>&1
+trap 'touch /var/lib/local-ai/bootstrap-failed' ERR
+
+mkdir -p /var/lib/local-ai /var/log/ollama /var/lib/ollama-models
+export DEBIAN_FRONTEND=noninteractive
+export HOME=/root
+
+apt-get update
+apt-get install -y --no-install-recommends awscli ca-certificates curl jq xfsprogs
+
+root_source=$(readlink -f "$(findmnt -n -o SOURCE /)")
+root_parent=$(lsblk -no PKNAME "$${root_source}" 2>/dev/null || true)
+root_parent=$${root_parent:-$(basename "$${root_source}")}
+model_device=""
+while read -r device serial; do
+  if [[ "$${serial}" == vol* && "$(basename "$${device}")" != "$${root_parent}" ]]; then
+    model_device="$${device}"
+    break
+  fi
+done < <(lsblk -dpno NAME,SERIAL)
+
+if [[ -z "$${model_device}" ]]; then
+  echo "Unable to locate the model EBS volume" >&2
+  exit 1
+fi
+
+if ! blkid "$${model_device}" >/dev/null 2>&1; then
+  mkfs.xfs -f "$${model_device}"
+fi
+model_uuid=$(blkid -s UUID -o value "$${model_device}")
+if ! grep -q "$${model_uuid}" /etc/fstab; then
+  echo "UUID=$${model_uuid} /var/lib/ollama-models xfs defaults,nofail 0 2" >>/etc/fstab
+fi
+mount /var/lib/ollama-models
+
+installed_version=$(ollama --version 2>/dev/null || true)
+if [[ "$${installed_version}" != *"${ollama_version}"* ]]; then
+  curl --fail --silent --show-error --location https://ollama.com/install.sh --output /tmp/ollama-install.sh
+  chmod 0755 /tmp/ollama-install.sh
+  OLLAMA_VERSION='${ollama_version}' /tmp/ollama-install.sh
+fi
+
+chown -R ollama:ollama /var/lib/ollama-models /var/log/ollama
+mkdir -p /etc/systemd/system/ollama.service.d
+cat >/etc/systemd/system/ollama.service.d/production.conf <<'OLLAMA_SERVICE'
+[Service]
+Environment="OLLAMA_HOST=127.0.0.1:11434"
+Environment="OLLAMA_MODELS=/var/lib/ollama-models"
+Environment="OLLAMA_MAX_LOADED_MODELS=1"
+Environment="OLLAMA_NUM_PARALLEL=1"
+Environment="OLLAMA_MAX_QUEUE=128"
+StandardOutput=append:/var/log/ollama/ollama.log
+StandardError=append:/var/log/ollama/ollama.log
+OLLAMA_SERVICE
+
+systemctl daemon-reload
+systemctl enable --now ollama
+
+for _ in $(seq 1 60); do
+  curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null && break
+  sleep 5
+done
+curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null
+
+manifest=$(aws ssm get-parameter \
+  --region '${aws_region}' \
+  --name '${model_manifest_parameter}' \
+  --with-decryption \
+  --query 'Parameter.Value' --output text)
+printf '%s\n' "$${manifest}" >/var/lib/local-ai/model-manifest.json
+
+while IFS= read -r model; do
+  name=$(jq -r '.name' <<<"$${model}")
+  expected=$(jq -r '.digest' <<<"$${model}")
+  actual=$(curl --fail --silent http://127.0.0.1:11434/api/tags | \
+    jq -r --arg name "$${name}" '.models[] | select(.name == $name) | .digest' | head -n1)
+  [[ -n "$${actual}" ]] && actual="sha256:$${actual#sha256:}"
+
+  if [[ "$${actual}" != "$${expected}" ]]; then
+    ollama pull "$${name}"
+    actual=$(curl --fail --silent http://127.0.0.1:11434/api/tags | \
+      jq -r --arg name "$${name}" '.models[] | select(.name == $name) | .digest' | head -n1)
+    actual="sha256:$${actual#sha256:}"
+  fi
+
+  if [[ "$${actual}" != "$${expected}" ]]; then
+    echo "Digest verification failed for $${name}: expected $${expected}, received $${actual}" >&2
+    exit 1
+  fi
+
+  if [[ "$(jq -r '.preload' <<<"$${model}")" == "true" ]]; then
+    jq -n --arg model "$${name}" '{model: $model, keep_alive: -1}' | \
+      curl --fail --silent --show-error http://127.0.0.1:11434/api/generate \
+        --header 'Content-Type: application/json' --data-binary @- >/dev/null
+  fi
+done < <(jq -c '.[]' <<<"$${manifest}")
+
+sed -i 's/OLLAMA_HOST=127.0.0.1:11434/OLLAMA_HOST=0.0.0.0:11434/' \
+  /etc/systemd/system/ollama.service.d/production.conf
+systemctl daemon-reload
+systemctl restart ollama
+
+architecture=$(dpkg --print-architecture)
+if ! command -v amazon-cloudwatch-agent-ctl >/dev/null 2>&1; then
+  curl --fail --silent --show-error --location \
+    "https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/$${architecture}/latest/amazon-cloudwatch-agent.deb" \
+    --output /tmp/amazon-cloudwatch-agent.deb
+  dpkg -i /tmp/amazon-cloudwatch-agent.deb
+fi
+
+cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWCONFIG'
+{
+  "agent": {"run_as_user": "root"},
+  "metrics": {
+    "namespace": "LocalAIAssistant",
+    "append_dimensions": {
+      "AutoScalingGroupName": "$${aws:AutoScalingGroupName}",
+      "InstanceId": "$${aws:InstanceId}"
+    },
+    "metrics_collected": {
+      "cpu": {"measurement": ["cpu_usage_idle", "cpu_usage_iowait"], "totalcpu": true},
+      "disk": {"measurement": ["used_percent"], "resources": ["/", "/var/lib/ollama-models"]},
+      "mem": {"measurement": ["mem_used_percent"]}
+    }
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {"file_path": "/var/log/local-ai-bootstrap.log", "log_group_name": "${bootstrap_log_group}", "log_stream_name": "{instance_id}"},
+          {"file_path": "/var/log/ollama/ollama.log", "log_group_name": "${ollama_log_group}", "log_stream_name": "{instance_id}"}
+        ]
+      }
+    }
+  }
+}
+CWCONFIG
+
+cat >/usr/local/bin/publish-gpu-metrics <<'GPU_METRICS'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+token=$(curl --fail --silent --show-error --request PUT \
+  --header 'X-aws-ec2-metadata-token-ttl-seconds: 300' \
+  http://169.254.169.254/latest/api/token)
+instance_id=$(curl --fail --silent --show-error \
+  --header "X-aws-ec2-metadata-token: $${token}" \
+  http://169.254.169.254/latest/meta-data/instance-id)
+IFS=, read -r utilization memory_used memory_total < <(
+  nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total \
+    --format=csv,noheader,nounits | head -n1 | tr -d ' '
+)
+aws cloudwatch put-metric-data --region '${aws_region}' --namespace LocalAIAssistant \
+  --metric-data \
+  "MetricName=GPUUtilization,Dimensions=[{Name=InstanceId,Value=$${instance_id}}],Value=$${utilization},Unit=Percent" \
+  "MetricName=GPUMemoryUsed,Dimensions=[{Name=InstanceId,Value=$${instance_id}}],Value=$${memory_used},Unit=Megabytes" \
+  "MetricName=GPUMemoryTotal,Dimensions=[{Name=InstanceId,Value=$${instance_id}}],Value=$${memory_total},Unit=Megabytes"
+GPU_METRICS
+chmod 0755 /usr/local/bin/publish-gpu-metrics
+
+cat >/etc/systemd/system/gpu-metrics.service <<'GPU_SERVICE'
+[Unit]
+Description=Publish NVIDIA GPU metrics to CloudWatch
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/publish-gpu-metrics
+GPU_SERVICE
+
+cat >/etc/systemd/system/gpu-metrics.timer <<'GPU_TIMER'
+[Unit]
+Description=Publish NVIDIA GPU metrics every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=gpu-metrics.service
+
+[Install]
+WantedBy=timers.target
+GPU_TIMER
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+systemctl daemon-reload
+systemctl enable --now gpu-metrics.timer
+
+for _ in $(seq 1 60); do
+  if curl --fail --silent http://127.0.0.1:11434/api/tags >/dev/null; then
+    touch /var/lib/local-ai/bootstrap-complete
+    exit 0
+  fi
+  sleep 5
+done
+
+echo "Ollama did not become healthy" >&2
+exit 1

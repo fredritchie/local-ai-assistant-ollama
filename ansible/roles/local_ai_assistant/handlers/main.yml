@@ -1,0 +1,3 @@
+---
+# Runtime services are configured by launch-template user data. Image builds do
+# not restart services so the resulting AMI remains quiescent and reusable.
