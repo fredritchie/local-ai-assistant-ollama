@@ -34,3 +34,5 @@ packer/manifest.json
 packer/packer_cache/
 
 *._*
+
+!*.tfvars
