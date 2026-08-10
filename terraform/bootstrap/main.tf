@@ -271,6 +271,7 @@ data "aws_iam_policy_document" "github_deploy" {
       "kms:Encrypt",
       "kms:GenerateDataKey*",
       "kms:GetKeyPolicy",
+      "kms:GetKeyRotationStatus",
       "kms:List*",
       "kms:PutKeyPolicy",
       "kms:ReEncrypt*",
