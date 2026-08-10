@@ -288,7 +288,7 @@ variable "max_history_messages" {
 }
 
 variable "enable_deletion_protection" {
-  description = "Protect ALBs from accidental deletion."
+  description = "Protect ALBs and the RDS instance from accidental deletion."
   type        = bool
   default     = true
 }

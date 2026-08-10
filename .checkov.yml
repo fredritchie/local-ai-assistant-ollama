@@ -9,6 +9,7 @@ skip-check:
   - CKV_AWS_341
   # Deletion protection is enabled in prod and disabled only for disposable dev.
   - CKV_AWS_150
+  - CKV_AWS_293
   # HTTP port 80 is explicit; public HTTPS is enabled when ACM is configured.
   # Internal HTTP is isolated by private subnets and SG identities.
   - CKV_AWS_2

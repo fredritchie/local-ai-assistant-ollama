@@ -61,7 +61,7 @@ data "aws_iam_policy_document" "workload_kms" {
 #checkov:skip=CKV_AWS_111:KMS key policies require wildcard resources because the key is the policy attachment point.
 #checkov:skip=CKV_AWS_356:KMS key policies cannot reference their own ARN while being created.
 resource "aws_kms_key" "workload" {
-  description             = "Encrypt ${local.name_prefix} logs and alarm notifications"
+  description             = "Encrypt ${local.name_prefix} workload data, logs, and alarm notifications"
   deletion_window_in_days = 30
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.workload_kms.json
