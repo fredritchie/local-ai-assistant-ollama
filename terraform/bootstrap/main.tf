@@ -163,6 +163,24 @@ data "tls_certificate" "github" {
   url   = "https://token.actions.githubusercontent.com"
 }
 
+locals {
+  github_oidc_repository = (
+    var.github_owner_id != null && var.github_repository_id != null
+    ? "${var.github_owner}@${var.github_owner_id}/${var.github_repository}@${var.github_repository_id}"
+    : "${var.github_owner}/${var.github_repository}"
+  )
+}
+
+check "github_immutable_ids" {
+  assert {
+    condition = (
+      (var.github_owner_id == null && var.github_repository_id == null) ||
+      (var.github_owner_id != null && var.github_repository_id != null)
+    )
+    error_message = "github_owner_id and github_repository_id must either both be set or both be null."
+  }
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   count = var.enable_github_oidc ? 1 : 0
 
@@ -193,7 +211,7 @@ data "aws_iam_policy_document" "github_assume" {
       variable = "token.actions.githubusercontent.com:sub"
       values = [
         for environment in var.github_environments :
-        "repo:${var.github_owner}/${var.github_repository}:environment:${environment}"
+        "repo:${local.github_oidc_repository}:environment:${environment}"
       ]
     }
   }

@@ -21,7 +21,9 @@ terraform -chdir=terraform/bootstrap apply \
   -var="state_bucket_name=YOUR_GLOBALLY_UNIQUE_STATE_BUCKET" \
   -var="enable_github_oidc=true" \
   -var="github_owner=YOUR_GITHUB_USERNAME" \
-  -var="github_repository=YOUR_REPOSITORY_NAME"
+  -var="github_repository=YOUR_REPOSITORY_NAME" \
+  -var="github_owner_id=YOUR_NUMERIC_GITHUB_OWNER_ID" \
+  -var="github_repository_id=YOUR_NUMERIC_GITHUB_REPOSITORY_ID"
 
 # 3. Create your local, ignored operator input file and fill in its values.
 cp .github/deployment-config/operator.env.example \
@@ -118,8 +120,14 @@ terraform -chdir=terraform/bootstrap apply \
   -var="state_bucket_name=YOUR_GLOBALLY_UNIQUE_STATE_BUCKET" \
   -var="enable_github_oidc=true" \
   -var="github_owner=YOUR_GITHUB_USERNAME" \
-  -var="github_repository=YOUR_REPOSITORY_NAME"
+  -var="github_repository=YOUR_REPOSITORY_NAME" \
+  -var="github_owner_id=YOUR_NUMERIC_GITHUB_OWNER_ID" \
+  -var="github_repository_id=YOUR_NUMERIC_GITHUB_REPOSITORY_ID"
 ```
+
+GitHub repositories using immutable OIDC subjects require the numeric owner and
+repository IDs. GitHub includes both IDs in every deployment token, preventing
+a renamed or recycled repository name from inheriting the role trust.
 
 Retrieve the values needed by CI/CD:
 

@@ -32,6 +32,28 @@ variable "github_repository" {
   default     = "local-ai-assistant-ollama"
 }
 
+variable "github_owner_id" {
+  description = "Immutable numeric GitHub owner ID included in OIDC subjects for repositories using immutable claims."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.github_owner_id == null || can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id must be null or a numeric GitHub owner ID."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Immutable numeric GitHub repository ID included in OIDC subjects for repositories using immutable claims."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.github_repository_id == null || can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be null or a numeric GitHub repository ID."
+  }
+}
+
 variable "enable_github_oidc" {
   description = "Create the optional GitHub Actions deployment role."
   type        = bool
