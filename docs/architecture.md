@@ -2,8 +2,11 @@
 
 ## Request path
 
+![Optional DuckDNS and Let's Encrypt HTTPS path](domain-tls-flow.svg)
+
 ```text
 Client
+  → optional DuckDNS and Global Accelerator
   → public ALB on 80 or 443
   → private app ASG target on Nginx port 80
   → Streamlit container on localhost port 8501
@@ -49,6 +52,7 @@ recovery across failures.
 | NAT Gateways | 1 | 2 |
 | Log retention | 7 days | 30 days |
 | Public transport | HTTP by default | ACM HTTPS with HTTP redirect |
+| Optional public name | DuckDNS + Global Accelerator | DuckDNS + Global Accelerator |
 | AWS WAF | Off | Rate limit and managed rules |
 | ALB deletion protection | Off | On |
 | State key | `dev/terraform.tfstate` | `prod/terraform.tfstate` |

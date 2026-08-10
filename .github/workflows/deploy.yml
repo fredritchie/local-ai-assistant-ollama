@@ -30,10 +30,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
-    env:
-      TF_VAR_certificate_arn: ${{ vars.ACM_CERTIFICATE_ARN }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Export optional domain settings
+        env:
+          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+          ENABLE_DUCKDNS: ${{ vars.ENABLE_DUCKDNS }}
+          DUCKDNS_SUBDOMAIN: ${{ vars.DUCKDNS_SUBDOMAIN }}
+        run: |
+          if [[ -n "$ACM_CERTIFICATE_ARN" ]]; then
+            echo "TF_VAR_certificate_arn=$ACM_CERTIFICATE_ARN" >>"$GITHUB_ENV"
+          fi
+          if [[ -n "$ENABLE_DUCKDNS" ]]; then
+            [[ "$ENABLE_DUCKDNS" =~ ^(true|false)$ ]]
+            echo "TF_VAR_enable_duckdns=$ENABLE_DUCKDNS" >>"$GITHUB_ENV"
+          fi
+          if [[ -n "$DUCKDNS_SUBDOMAIN" ]]; then
+            echo "TF_VAR_duckdns_subdomain=$DUCKDNS_SUBDOMAIN" >>"$GITHUB_ENV"
+          fi
       - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}

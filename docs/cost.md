@@ -18,6 +18,7 @@ Assumes 730 hours per month and low ALB traffic.
 | Two low-use ALB LCUs | about $11.68 | about $11.68 | $0.008/LCU-hour |
 | gp3 volumes | about $23.16 | about $46.33 | $0.0912/GB-month |
 | WAF base resources | Disabled | about $8 | Plus request charges |
+| Global Accelerator | Optional $18.25 | Optional $18.25 | $0.025/hour, plus IPv4 and DT-Premium |
 | **Estimated baseline** | **about $542/month** | **about $1,045/month** | Before variable services |
 
 The GPU tier dominates cost. Destroy development when it is not being used.
@@ -56,6 +57,7 @@ AWS positions G4dn for cost-effective machine-learning inference. See the
 - Environment-specific ASG capacity
 - Exact model selection rather than downloading every available model
 - Resource tags for project and environment allocation
+- Leave `enable_duckdns` disabled when a stable DuckDNS entry point is not needed
 
 NAT Gateways charge for both hours and processed data. See [AWS NAT Gateway
 pricing guidance](https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-pricing.html).

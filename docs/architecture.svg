@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
   <title id="title">Production high-availability Local AI Assistant architecture</title>
-  <desc id="desc">Internet traffic enters a public application load balancer, reaches Nginx and Streamlit instances in two private application subnets, then reaches Ollama GPU instances through an internal load balancer in two private GPU subnets.</desc>
+  <desc id="desc">Internet traffic optionally enters through DuckDNS and Global Accelerator before a public application load balancer, reaches Nginx and Streamlit instances in two private application subnets, then reaches Ollama GPU instances through an internal load balancer in two private GPU subnets.</desc>
   <defs>
     <style>
       .bg { fill: #0d1117; }
@@ -32,6 +32,8 @@
   <rect class="managed" x="40" y="82" width="210" height="76" rx="12"/>
   <text class="text label" x="145" y="113" text-anchor="middle">Clients</text>
   <text class="muted small" x="145" y="137" text-anchor="middle">HTTP :80 / HTTPS :443</text>
+
+  <text class="muted small" x="357" y="145" text-anchor="middle">DuckDNS + Global Accelerator (optional)</text>
 
   <rect class="vpc" x="285" y="82" width="1075" height="610" rx="18"/>
   <text class="text label" x="310" y="115">Dedicated VPC</text>

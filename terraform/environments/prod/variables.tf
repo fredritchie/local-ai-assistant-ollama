@@ -49,6 +49,16 @@ variable "certificate_arn" {
   default = null
 }
 
+variable "enable_duckdns" {
+  type    = bool
+  default = false
+}
+
+variable "duckdns_subdomain" {
+  type    = string
+  default = null
+}
+
 variable "alarm_email" {
   type    = string
   default = null

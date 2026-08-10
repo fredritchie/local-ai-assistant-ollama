@@ -234,6 +234,23 @@ variable "certificate_arn" {
   default     = null
 }
 
+variable "enable_duckdns" {
+  description = "Create an optional Global Accelerator entry point suitable for a stable DuckDNS A record."
+  type        = bool
+  default     = false
+}
+
+variable "duckdns_subdomain" {
+  description = "DuckDNS subdomain without the .duckdns.org suffix. The token is never managed by Terraform."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.duckdns_subdomain == null || var.duckdns_subdomain == "" || can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", var.duckdns_subdomain))
+    error_message = "duckdns_subdomain must be a lowercase DuckDNS label without the .duckdns.org suffix."
+  }
+}
+
 variable "log_retention_days" {
   description = "CloudWatch Logs retention period."
   type        = number

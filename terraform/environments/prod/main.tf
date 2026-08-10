@@ -18,6 +18,8 @@ module "platform" {
   ))
   model_snapshot_id          = var.model_snapshot_id
   enable_https               = var.enable_https
+  enable_duckdns             = var.enable_duckdns
+  duckdns_subdomain          = var.duckdns_subdomain
   enable_waf                 = true
   certificate_arn            = var.certificate_arn
   log_retention_days         = 30

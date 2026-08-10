@@ -10,4 +10,6 @@ allowed_app_cidrs = ["203.0.113.10/32"]
 # alarm_email       = "operator@example.com"
 # enable_https      = true
 # certificate_arn   = "arn:aws:acm:ap-south-1:123456789012:certificate/uuid"
+# enable_duckdns    = true
+# duckdns_subdomain = "your-local-ai-assistant-dev"
 # secret_arns       = ["arn:aws:secretsmanager:ap-south-1:123456789012:secret:local-ai/dev/app-xxxxxx"]

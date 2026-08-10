@@ -1,0 +1,66 @@
+name: Renew DuckDNS Let's Encrypt certificate
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 1 * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: renew-production-certificate
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    environment: prod
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validate renewal configuration
+        env:
+          AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          DUCKDNS_SECRET_ARN: ${{ vars.DUCKDNS_SECRET_ARN }}
+          DUCKDNS_SUBDOMAIN: ${{ vars.DUCKDNS_SUBDOMAIN }}
+          DUCKDNS_IPV4: ${{ vars.DUCKDNS_IPV4 }}
+          LETSENCRYPT_EMAIL: ${{ vars.LETSENCRYPT_EMAIL }}
+          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+        run: |
+          for variable in AWS_DEPLOY_ROLE_ARN DUCKDNS_SECRET_ARN DUCKDNS_SUBDOMAIN \
+            DUCKDNS_IPV4 LETSENCRYPT_EMAIL ACM_CERTIFICATE_ARN; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "GitHub environment variable $variable is required" >&2
+              exit 2
+            fi
+          done
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+      - name: Install Certbot
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes certbot
+      - name: Renew and reimport certificate
+        env:
+          DUCKDNS_SECRET_ARN: ${{ vars.DUCKDNS_SECRET_ARN }}
+          DUCKDNS_SUBDOMAIN: ${{ vars.DUCKDNS_SUBDOMAIN }}
+          DUCKDNS_IPV4: ${{ vars.DUCKDNS_IPV4 }}
+          LETSENCRYPT_EMAIL: ${{ vars.LETSENCRYPT_EMAIL }}
+          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+          AWS_REGION: ap-south-1
+        run: |
+          DUCKDNS_TOKEN=$(aws secretsmanager get-secret-value \
+            --secret-id "$DUCKDNS_SECRET_ARN" \
+            --query SecretString --output text)
+          echo "::add-mask::$DUCKDNS_TOKEN"
+          export DUCKDNS_TOKEN
+
+          ./scripts/update_duckdns.sh "$DUCKDNS_SUBDOMAIN" "$DUCKDNS_IPV4"
+          ./scripts/issue_letsencrypt_duckdns.sh \
+            "$LETSENCRYPT_EMAIL" \
+            "$DUCKDNS_SUBDOMAIN" \
+            "$ACM_CERTIFICATE_ARN"

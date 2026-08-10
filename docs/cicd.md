@@ -15,6 +15,8 @@ create protected environments named `dev` and `prod`, then configure:
 | `TF_STATE_BUCKET` | Bootstrap `state_bucket_name` output |
 | `TF_STATE_KMS_KEY_ID` | Bootstrap `state_kms_key_arn` output |
 | `ACM_CERTIFICATE_ARN` | Production ACM certificate ARN; may be empty in development |
+| `ENABLE_DUCKDNS` | Optional `true` to create Global Accelerator |
+| `DUCKDNS_SUBDOMAIN` | Optional DuckDNS label without the suffix |
 
 Require reviewers for the production environment. The workflow uses short-lived
 OIDC credentials and does not require AWS access-key secrets.
@@ -39,3 +41,8 @@ artifacts.
 CI never performs an automatic production apply on a push. A workflow dispatch,
 protected environment approval, reviewed plan, and explicit Apply input are
 required. Concurrency permits only one deployment per environment.
+
+Certificate renewal is a separate optional workflow. It retrieves the DuckDNS
+token from Secrets Manager, completes a DNS-01 challenge, and reimports the
+certificate into the existing ACM ARN. See
+[DuckDNS and Let's Encrypt HTTPS](duckdns-letsencrypt.md).

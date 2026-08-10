@@ -62,7 +62,7 @@ jobs:
       - run: ansible-playbook -i ansible/inventory.ini.example ansible/playbook.yml --syntax-check
       - run: ansible-lint ansible/playbook.yml
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - run: shellcheck scripts/*.sh ansible/roles/local_ai_assistant/files/local-ai-assistant-health
+      - run: shellcheck scripts/*.sh
       - run: ./scripts/check_user_data.sh
       - uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3
       - run: packer init packer

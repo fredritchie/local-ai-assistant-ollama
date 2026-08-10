@@ -131,6 +131,29 @@ resource "aws_cloudwatch_metric_alarm" "app_latency" {
   tags = local.common_tags
 }
 
+resource "aws_cloudwatch_metric_alarm" "certificate_expiry" {
+  count = var.enable_https ? 1 : 0
+
+  alarm_name          = "${local.name_prefix}-certificate-expiry"
+  alarm_description   = "The imported or ACM-managed TLS certificate has fewer than 30 days remaining"
+  namespace           = "AWS/CertificateManager"
+  metric_name         = "DaysToExpiry"
+  statistic           = "Minimum"
+  period              = 86400
+  evaluation_periods  = 1
+  threshold           = 30
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  ok_actions          = [aws_sns_topic.alarms.arn]
+
+  dimensions = {
+    CertificateArn = var.certificate_arn
+  }
+
+  tags = local.common_tags
+}
+
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${local.name_prefix}-operations"
   dashboard_body = jsonencode({

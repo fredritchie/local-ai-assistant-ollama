@@ -212,10 +212,16 @@ data "aws_iam_policy_document" "github_deploy" {
   statement {
     sid = "ManageApplicationInfrastructure"
     actions = [
+      "acm:AddTagsToCertificate",
+      "acm:DescribeCertificate",
+      "acm:GetCertificate",
+      "acm:ImportCertificate",
+      "acm:ListTagsForCertificate",
       "autoscaling:*",
       "cloudwatch:*",
       "ec2:*",
       "elasticloadbalancing:*",
+      "globalaccelerator:*",
       "iam:CreateInstanceProfile",
       "iam:CreatePolicyVersion",
       "iam:CreateRole",
@@ -263,6 +269,12 @@ data "aws_iam_policy_document" "github_deploy" {
       "wafv2:*",
     ]
     resources = ["*"]
+  }
+
+  statement {
+    sid       = "ReadDuckDNSRenewalToken"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}/duckdns-*"]
   }
 
   statement {

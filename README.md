@@ -15,6 +15,8 @@ healthy Auto Scaling targets across two Availability Zones.
 ## Highlights
 
 - Public ALB across two AZs with ACM TLS enabled by default in production
+- Optional DuckDNS hostname, stable Global Accelerator entry point, and
+  Let's Encrypt DNS-01 certificate imported into ACM
 - Private application ASG: Nginx `:80` to Dockerized Streamlit `:8501`
 - Private GPU ASG behind an internal Ollama ALB
 - Production capacity of two app and two `g4dn.xlarge` GPU instances
@@ -117,6 +119,7 @@ See [CI/CD and promotion](docs/cicd.md).
 ## Operations and safety
 
 - [Architecture and failure domains](docs/architecture.md)
+- [DuckDNS and Let's Encrypt HTTPS](docs/duckdns-letsencrypt.md)
 - [Security model](docs/security.md)
 - [Model lifecycle and rollback](docs/models.md)
 - [Operations, deployment, and recovery](docs/operations.md)

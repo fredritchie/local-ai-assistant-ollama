@@ -39,6 +39,9 @@ See [AWS Parameter Store guidance](https://docs.aws.amazon.com/systems-manager/l
 - EBS volumes, state, ECR, SNS, and CloudWatch Logs are encrypted.
 - ECR tags are immutable and images are scanned on push.
 - Production defaults to ACM TLS; Nginx port 80 remains private behind the ALB.
+- The optional DuckDNS token stays in Secrets Manager and never enters
+  Terraform state. Let's Encrypt private keys exist only in an ephemeral
+  renewal workspace before import into ACM.
 
 ## CI/CD trust
 

@@ -7,6 +7,10 @@ allowed_app_cidrs = ["0.0.0.0/0"]
 enable_https      = true
 certificate_arn   = "arn:aws:acm:ap-south-1:123456789012:certificate/uuid"
 
+# Optional DuckDNS + Let's Encrypt entry point. See docs/duckdns-letsencrypt.md.
+# enable_duckdns    = true
+# duckdns_subdomain = "your-local-ai-assistant"
+
 # Recommended production settings:
 # model_snapshot_id = "snap-0123456789abcdef0"
 # alarm_email       = "operator@example.com"

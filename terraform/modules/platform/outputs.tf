@@ -1,11 +1,26 @@
 output "application_url" {
   description = "Public application URL."
-  value       = var.enable_https ? "https://${aws_lb.public.dns_name}" : "http://${aws_lb.public.dns_name}"
+  value       = "${var.enable_https ? "https" : "http"}://${local.public_hostname}"
 }
 
 output "application_health_url" {
   description = "Public application health endpoint."
-  value       = "${var.enable_https ? "https" : "http"}://${aws_lb.public.dns_name}/healthz"
+  value       = "${var.enable_https ? "https" : "http"}://${local.public_hostname}/healthz"
+}
+
+output "duckdns_fqdn" {
+  description = "Optional DuckDNS hostname configured outside Terraform."
+  value       = var.enable_duckdns ? "${var.duckdns_subdomain}.duckdns.org" : null
+}
+
+output "duckdns_ipv4" {
+  description = "Primary stable Global Accelerator IPv4 address to publish to DuckDNS."
+  value       = var.enable_duckdns ? aws_globalaccelerator_accelerator.public[0].ip_sets[0].ip_addresses[0] : null
+}
+
+output "global_accelerator_ipv4_addresses" {
+  description = "Both Global Accelerator IPv4 addresses. DuckDNS publishes one; full DNS HA requires a provider supporting multiple A records."
+  value       = var.enable_duckdns ? aws_globalaccelerator_accelerator.public[0].ip_sets[0].ip_addresses : []
 }
 
 output "public_alb_dns_name" {

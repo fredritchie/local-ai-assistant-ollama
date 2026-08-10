@@ -65,6 +65,15 @@ STATE_KMS_KEY_ID="YOUR-STATE-KMS-KEY-ARN" \
 
 Promote the same digest to production only after development smoke tests.
 
+## Optional DuckDNS and Let's Encrypt HTTPS
+
+Set `enable_duckdns = true` and a `duckdns_subdomain` to create an AWS Global
+Accelerator with static IP addresses in front of the public ALB. Issue the
+certificate through DuckDNS DNS-01, import it into ACM, then set
+`certificate_arn` and enable HTTPS. The token and private key are deliberately
+outside Terraform. Follow the complete two-apply sequence in
+[the DuckDNS and Let's Encrypt guide](../docs/duckdns-letsencrypt.md).
+
 ## Environment isolation
 
 Development and production use separate root modules, state keys, CIDRs,

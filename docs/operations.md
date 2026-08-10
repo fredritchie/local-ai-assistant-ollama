@@ -59,6 +59,29 @@ sudo tail -n 200 /var/log/local-ai-bootstrap.log
 Do not retag an image as `latest`; ECR tag immutability intentionally prevents
 that workflow.
 
+## HTTPS certificate operations
+
+Imported Let's Encrypt certificates are renewed by the monthly
+`Renew DuckDNS Let's Encrypt certificate` workflow. Check the active
+certificate and the public endpoint with:
+
+```bash
+aws acm describe-certificate \
+  --region ap-south-1 \
+  --certificate-arn "$ACM_CERTIFICATE_ARN" \
+  --query 'Certificate.[DomainName,Status,NotAfter]' \
+  --output table
+
+openssl s_client \
+  -connect "${DUCKDNS_SUBDOMAIN}.duckdns.org:443" \
+  -servername "${DUCKDNS_SUBDOMAIN}.duckdns.org" </dev/null
+```
+
+If renewal fails, run the protected workflow manually and inspect its logs.
+The CloudWatch certificate-expiry alarm warns when fewer than 30 days remain.
+See [DuckDNS and Let's Encrypt HTTPS](duckdns-letsencrypt.md) for setup and
+recovery details.
+
 ## Host rollback
 
 Restore the previous `app_ami_id` or `gpu_ami_id`, plan, and apply. ASG

@@ -66,8 +66,10 @@ run "production_high_availability" {
   command = plan
 
   variables {
-    environment   = "prod"
-    app_image_uri = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/local-ai-assistant@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    environment       = "prod"
+    app_image_uri     = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/local-ai-assistant@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    enable_duckdns    = true
+    duckdns_subdomain = "local-ai-portfolio"
     model_manifest = [
       {
         name     = "llama3.2:3b"
@@ -97,5 +99,10 @@ run "production_high_availability" {
   assert {
     condition     = aws_lb.ollama.internal
     error_message = "Ollama must remain behind an internal load balancer."
+  }
+
+  assert {
+    condition     = length(aws_globalaccelerator_accelerator.public) == 1 && output.duckdns_fqdn == "local-ai-portfolio.duckdns.org"
+    error_message = "DuckDNS mode must create the stable accelerator entry point and hostname output."
   }
 }
