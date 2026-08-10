@@ -4,6 +4,11 @@ This branch contains only the local, native Python deployment of the Streamlit
 chat application and Ollama. It does not include Docker, Terraform, AWS, or
 Ansible configuration.
 
+![Local native runtime and request sequence](docs/architecture.svg)
+
+See [Architecture](docs/architecture.md) for the component and request-flow
+boundaries represented in the diagram.
+
 ## What it runs
 
 - Streamlit at `http://localhost:8501`
