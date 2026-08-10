@@ -21,6 +21,8 @@ is required.
 
 ## Provisioning path
 
+![Ansible bastion and service configuration flow](bastion-flow.svg)
+
 Terraform creates a public subnet for a small T-family Streamlit instance and a
 private subnet for a `g4dn.xlarge` Ollama instance. A NAT gateway gives the
 private service outbound-only access for packages and models. Ollama port
