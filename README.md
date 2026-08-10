@@ -32,6 +32,7 @@ the implementation branches linked below.
 - SSM/Secrets Manager configuration, encrypted remote Terraform state, and WAF
 - CloudWatch logs, metrics, dashboards, alarms, traces, and GPU telemetry
 - Controlled optional CI/CD with GitHub OIDC and protected environments
+- Optional DuckDNS, Global Accelerator, and automated Let's Encrypt TLS renewal
 - CI checks for Python, shell scripts, Terraform, Ansible, Docker, and docs
 
 ## Deployment progression
@@ -43,7 +44,7 @@ foundation. Each row states what it adds over the branch immediately below it.
 
 | Branch | Description | Advantage over the previous branch |
 |---|---|---|
-| [AWS production HA](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-production-ha) | The final portfolio branch adds a multi-AZ public ALB, private app and GPU Auto Scaling Groups, an internal Ollama ALB, Nginx on port 80, ECR delivery, Packer AMIs, managed configuration, remote state, WAF, observability, tests, and optional controlled CI/CD. | Turns the separated Docker architecture into a highly available, immutable, observable, and promotion-driven platform with documented security, recovery, model lifecycle, and cost controls. |
+| [AWS production HA](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-production-ha) | The final portfolio branch adds a multi-AZ public ALB, private app and GPU Auto Scaling Groups, an internal Ollama ALB, Nginx on port 80, ECR delivery, Packer AMIs, managed configuration, remote state, WAF, observability, tests, optional controlled CI/CD, and an optional DuckDNS/Global Accelerator/Let's Encrypt HTTPS path. | Turns the separated Docker architecture into a highly available, immutable, observable, and promotion-driven platform with documented security, recovery, model lifecycle, certificate renewal, and cost controls. |
 | [AWS EC2 Ansible microservices Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-docker) | Terraform creates separate public Streamlit and private GPU Ollama instances. Ansible manages Ollama natively and Streamlit as a Docker container. | Adds container isolation and reproducible image-based delivery to the separated architecture. |
 | [AWS EC2 Ansible microservices native](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-microservices-native) | Terraform creates separate instances, while Ansible installs native Streamlit publicly and Ollama privately. | Isolates inference from the internet and allows the application and GPU tiers to be sized independently. |
 | [AWS EC2 Ansible Docker](https://github.com/fredritchie/local-ai-assistant-ollama/tree/feature/aws-ec2-ansible-docker) | Terraform provisions one public GPU instance. Ansible manages native Ollama and Dockerized Streamlit on that instance. | Adds reproducible container packaging and runtime isolation. |
@@ -69,6 +70,8 @@ needed for that deployment method. Depending on the branch, this includes:
 The final production branch additionally includes environment-separated remote
 state, immutable artifacts, edge protection, autoscaling, observability,
 integration/infra tests, operational runbooks, and a documented cost model.
+Its optional public-domain path adds stable anycast addressing, DuckDNS DNS-01
+validation, ACM TLS termination, and protected certificate renewal.
 
 This branch-per-stage structure keeps the learning path visible in Git history
 and prevents local, user-data, Ansible, native, Docker, and microservice
@@ -91,6 +94,9 @@ concerns from becoming mixed together.
 - **Production progression:** the final branch adds failure-domain-aware
   capacity, ALBs, ECR digest promotion, secure runtime configuration, remote
   state locking, WAF, telemetry, and controlled deployment approvals.
+- **Public TLS lifecycle:** the final branch can publish a stable Global
+  Accelerator address through DuckDNS and renew a Let's Encrypt certificate
+  into ACM without storing the token or private key in Terraform state.
 
 ## Technology stack
 
@@ -98,8 +104,9 @@ concerns from becoming mixed together.
 |---|---|
 | Application | Python, Streamlit, Ollama |
 | Containers | Docker |
-| Infrastructure | Terraform, AWS EC2, VPC, ALB, Auto Scaling, EBS, ECR, IAM, Systems Manager, Secrets Manager, WAF |
+| Infrastructure | Terraform, AWS EC2, VPC, ALB, Global Accelerator, Auto Scaling, EBS, ECR, ACM, IAM, Systems Manager, Secrets Manager, WAF |
 | Configuration | EC2 user data, cloud-init, Ansible, Packer, systemd |
+| Domain and TLS | DuckDNS, Let's Encrypt DNS-01, ACM |
 | Observability | CloudWatch Logs, metrics, dashboards and alarms; X-Ray-compatible OTLP traces |
 | Quality | Pytest, Ruff, ShellCheck, TFLint, Checkov, Trivy, Terraform native tests, Ansible lint, GitHub Actions |
 
