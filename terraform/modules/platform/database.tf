@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "rds_enhanced_monitoring_assume" {
 }
 
 resource "aws_iam_role" "rds_enhanced_monitoring" {
-  name_prefix        = "${local.name_prefix}-rds-monitoring-"
+  name_prefix        = "${local.name_prefix}-rds-mon-"
   assume_role_policy = data.aws_iam_policy_document.rds_enhanced_monitoring_assume.json
   tags               = local.common_tags
 }

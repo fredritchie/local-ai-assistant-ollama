@@ -38,6 +38,11 @@ override_data {
 }
 
 override_data {
+  target = data.aws_iam_policy_document.rds_enhanced_monitoring_assume
+  values = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
+}
+
+override_data {
   target = data.aws_iam_policy_document.app
   values = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
 }
