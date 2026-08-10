@@ -20,6 +20,8 @@ is required.
 
 ## AWS provisioning path
 
+![Terraform, cloud-init, and Docker deployment flow](bootstrap-flow.svg)
+
 Terraform creates a new VPC, public subnet, route, internet gateway, restricted
 security group, IAM instance profile, encrypted gp3 volume, and a
 `g4dn.xlarge`. The instance uses AWS's current Ubuntu 24.04 CUDA Deep Learning
