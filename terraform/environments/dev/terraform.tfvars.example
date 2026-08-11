@@ -6,7 +6,6 @@ model_manifest_file = "../../../models/model-manifest.example.json"
 allowed_app_cidrs = ["203.0.113.10/32"]
 
 # Terraform owns this endpoint and removes its ENI before destroying subnets.
-enable_instance_connect_endpoint = true
 
 # Optional settings:
 # model_snapshot_id = "snap-0123456789abcdef0"

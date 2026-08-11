@@ -29,12 +29,6 @@ variable "app_instance_type" {
   default = "t4g.small"
 }
 
-variable "enable_instance_connect_endpoint" {
-  description = "Create a managed EC2 Instance Connect Endpoint that Terraform removes before its subnet."
-  type        = bool
-  default     = true
-}
-
 variable "app_ami_id" {
   type    = string
   default = null
