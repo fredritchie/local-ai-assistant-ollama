@@ -7,7 +7,7 @@ allowed_app_cidrs = ["0.0.0.0/0"]
 
 # Enable only after issuing or importing an ACM certificate in this account
 # and region, then set certificate_arn to its real ARN.
-enable_https = false
+enable_https = true
 # certificate_arn = "arn:aws:acm:ap-south-1:008971653023:certificate/uuid"
 
 enable_deletion_protection = false

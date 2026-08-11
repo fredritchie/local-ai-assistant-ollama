@@ -83,7 +83,9 @@ run "production_high_availability" {
   variables {
     environment       = "prod"
     app_image_uri     = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/local-ai-assistant@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    certificate_arn   = "arn:aws:acm:ap-south-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
     enable_duckdns    = true
+    enable_https      = true
     duckdns_subdomain = "local-ai-portfolio"
     model_manifest = [
       {
@@ -119,5 +121,10 @@ run "production_high_availability" {
   assert {
     condition     = length(aws_globalaccelerator_accelerator.public) == 1 && output.duckdns_fqdn == "local-ai-portfolio.duckdns.org"
     error_message = "DuckDNS mode must create the stable accelerator entry point and hostname output."
+  }
+
+  assert {
+    condition     = length(aws_lb_listener.https) == 1 && length(aws_lb_listener_rule.http_to_https) == 1
+    error_message = "HTTPS mode must create the TLS listener and HTTP redirect rule."
   }
 }
