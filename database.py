@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
-import os
 
 import boto3
 import psycopg
@@ -34,7 +34,9 @@ def _connection_kwargs() -> dict[str, object]:
     if DATABASE_IAM_AUTH:
         region = os.getenv("AWS_REGION") or boto3.session.Session().region_name
         if not region:
-            raise DatabaseError("AWS_REGION is required for IAM database authentication.")
+            raise DatabaseError(
+                "AWS_REGION is required for IAM database authentication."
+            )
         password = boto3.client("rds", region_name=region).generate_db_auth_token(
             DBHostname=DATABASE_HOST,
             Port=DATABASE_PORT,
