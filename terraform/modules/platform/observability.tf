@@ -30,6 +30,13 @@ resource "aws_cloudwatch_log_group" "bootstrap" {
   tags              = local.common_tags
 }
 
+resource "aws_cloudwatch_log_group" "database_bootstrap" {
+  name              = "/${var.project_name}/${var.environment}/database-bootstrap"
+  retention_in_days = var.log_retention_days
+  kms_key_id        = aws_kms_key.workload.arn
+  tags              = local.common_tags
+}
+
 resource "aws_sns_topic" "alarms" {
   name              = "${local.name_prefix}-alarms"
   kms_master_key_id = aws_kms_key.workload.arn

@@ -87,3 +87,8 @@ output "database_iam_username" {
   description = "PostgreSQL user that the application authenticates as through its EC2 IAM role."
   value       = local.database_iam_username
 }
+
+output "database_bootstrap_project_name" {
+  description = "CodeBuild project that configures the PostgreSQL IAM database user."
+  value       = aws_codebuild_project.database_bootstrap.name
+}

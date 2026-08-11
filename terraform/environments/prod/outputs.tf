@@ -22,6 +22,10 @@ output "database_instance_id" {
   value = module.platform.database_instance_id
 }
 
+output "database_bootstrap_project_name" {
+  value = module.platform.database_bootstrap_project_name
+}
+
 output "dashboard_name" {
   value = module.platform.dashboard_name
 }

@@ -215,6 +215,33 @@ jobs:
         if: inputs.operation != 'plan'
         working-directory: terraform/environments/${{ inputs.environment }}
         run: terraform apply -input=false tfplan
+      - name: Bootstrap PostgreSQL IAM user
+        if: inputs.operation == 'deploy'
+        working-directory: terraform/environments/${{ inputs.environment }}
+        run: |
+          project_name=$(terraform output -raw database_bootstrap_project_name)
+          build_id=$(aws codebuild start-build --project-name "$project_name" \
+            --query 'build.id' --output text)
+          echo "Started database bootstrap build: $build_id"
+
+          for _ in $(seq 1 90); do
+            status=$(aws codebuild batch-get-builds --ids "$build_id" \
+              --query 'builds[0].buildStatus' --output text)
+            case "$status" in
+              SUCCEEDED)
+                echo "PostgreSQL IAM user bootstrap completed."
+                exit 0
+                ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT)
+                echo "PostgreSQL IAM user bootstrap failed: $status" >&2
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "Timed out waiting for database bootstrap build: $build_id" >&2
+          exit 1
       - name: Wait for application health
         if: inputs.operation == 'deploy'
         working-directory: terraform/environments/${{ inputs.environment }}
