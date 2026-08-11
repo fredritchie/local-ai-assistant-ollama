@@ -82,6 +82,24 @@ jobs:
               exit 2
             fi
           fi
+      - name: Report GitHub OIDC identity claims
+        run: |
+          token_response=$(curl --fail --silent --show-error \
+            --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+          token=$(jq --raw-output '.value' <<<"$token_response")
+          OIDC_TOKEN="$token" python3 - <<'PY'
+          import base64
+          import json
+          import os
+
+          payload = os.environ["OIDC_TOKEN"].split(".")[1]
+          claims = json.loads(base64.urlsafe_b64decode(payload + "=="))
+          print(json.dumps({
+              key: claims.get(key)
+              for key in ("aud", "sub", "repository", "repository_owner", "repository_id", "environment", "ref")
+          }, sort_keys=True))
+          PY
       - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
           role-to-assume: ${{ steps.config.outputs.AWS_DEPLOY_ROLE_ARN }}
