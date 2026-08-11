@@ -22,29 +22,50 @@ ALB association remains unchanged.
 
 1. Create the chosen subdomain in DuckDNS and rotate its token if it has ever
    been exposed.
-2. Configure the protected GitHub `prod` environment with these variables:
+2. In the ignored `.github/deployment-config/operator.env`, set:
 
-   | Variable | Value |
-   |---|---|
-   | `ENABLE_DUCKDNS` | `true` |
-   | `ENABLE_LETSENCRYPT` | `true` |
-   | `DUCKDNS_SUBDOMAIN` | Label only, such as `your-local-ai-assistant` |
-   | `LETSENCRYPT_EMAIL` | ACME account email address |
+   ```dotenv
+   PROD_ENABLE_DUCKDNS=true
+   PROD_ENABLE_LETSENCRYPT=true
+   PROD_DUCKDNS_SUBDOMAIN=your-local-ai-assistant
+   PROD_LETSENCRYPT_EMAIL=operator@example.com
+   ```
 
-3. Add the replacement DuckDNS token as the `DUCKDNS_TOKEN` **environment
-   secret**, never as a variable or repository file.
+3. Run `./scripts/sync_github_environment.sh prod`. The script creates or
+   updates the protected GitHub environment, writes non-secret deployment
+   configuration, and prompts for `DUCKDNS_TOKEN`. It stores that token only as
+   the GitHub `prod` environment secret.
 4. Run **Controlled deployment** with `environment=prod` and
-   `operation=deploy`. The workflow creates the Global Accelerator, updates
-   DuckDNS, issues the DNS-01 certificate, imports it into ACM, and applies the
-   final HTTPS configuration in the same run. HTTP redirects to HTTPS at the
-   ALB; Nginx remains private on port `80`.
+   `operation=deploy`. The workflow first creates the Global Accelerator and
+   an HTTP-only ALB path, updates DuckDNS, issues and imports the certificate,
+   then applies the final HTTPS listener configuration. HTTP redirects to HTTPS
+   at the ALB; Nginx remains private on port `80`.
 
 The workflow stores the certificate ARN and accelerator IP in Parameter Store
 for future deploys and renewals. No private key is stored in Terraform state.
 
+## Recovery and rollback
+
+If DNS update or certificate issuance fails, the initial HTTP-only deployment
+can remain reachable through the ALB while you correct the DuckDNS token,
+subdomain, or ACME email. Do not manually add a placeholder certificate ARN.
+
+1. Correct the setting in `operator.env` and rerun
+   `./scripts/sync_github_environment.sh prod` to update the GitHub environment
+   and, when prompted, rotate the token.
+2. Run controlled production `deploy` again. It detects the missing ACM ARN and
+   retries the bootstrap issuance path.
+3. If a newly imported certificate causes a problem, restore the previously
+   working ACM ARN in Parameter Store and rerun `deploy`; then investigate the
+   certificate and DNS logs before retrying renewal.
+
+Never remove the Global Accelerator or its Parameter Store values by hand while
+the workflow manages the endpoint; reconcile those resources through Terraform
+and the controlled workflow.
+
 ## Automated renewal
 
-Configure these variables in the protected GitHub `prod` environment:
+The synchronization script configures the required non-secret GitHub variables:
 
 | Variable | Value |
 |---|---|

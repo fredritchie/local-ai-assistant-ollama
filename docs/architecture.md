@@ -10,15 +10,24 @@ Client
   → public ALB on 80 or 443
   → private app ASG target on Nginx port 80
   → Streamlit container on localhost port 8501
-  → internal Ollama ALB on port 11434
-  → private g4dn.xlarge Ollama target
-  → private PostgreSQL RDS (users and chat history)
+      ├─→ internal Ollama ALB on port 11434
+      │    → private g4dn.xlarge Ollama target
+      └─→ private PostgreSQL RDS (users and chat history)
+
+Controlled deployment
+  → VPC-scoped CodeBuild database-bootstrap job
+  → PostgreSQL RDS (creates/grants the IAM database user)
 ```
 
 The public ALB and both Auto Scaling Groups span two Availability Zones. The
 application and GPU instances have no public IP addresses. Only the public ALB
 accepts internet traffic. Security-group references restrict both internal
 hops.
+
+The database-bootstrap job is not on the request path. It runs after a
+successful infrastructure deployment, uses a dedicated security group and
+service role, and is the only workload component that reads the RDS managed
+administrator secret.
 
 ## Availability behavior
 
@@ -53,8 +62,8 @@ automated backups for the configured retention period.
 | GPU capacity | 1 | 2 |
 | NAT Gateways | 1 | 2 |
 | Log retention | 7 days | 30 days |
-| Public transport | HTTP by default | ACM HTTPS with HTTP redirect |
-| Optional public name | DuckDNS + Global Accelerator | DuckDNS + Global Accelerator |
+| Public transport | HTTP by default; HTTPS when configured | HTTPS when ACM certificate is configured; otherwise HTTP |
+| Optional public name | DuckDNS + Global Accelerator when enabled | DuckDNS + Global Accelerator when enabled |
 | AWS WAF | Off | Rate limit and managed rules |
 | ALB deletion protection | Off | On |
 | State key | `dev/terraform.tfstate` | `prod/terraform.tfstate` |

@@ -7,7 +7,8 @@
 - App instances accept port 80 only from the public ALB security group.
 - The internal ALB accepts port 11434 only from the app security group.
 - GPU instances accept port 11434 only from the internal ALB security group.
-- PostgreSQL RDS accepts port 5432 only from the app security group and has no
+- PostgreSQL RDS accepts port 5432 from the app security group and the
+  dedicated VPC-scoped CodeBuild database-bootstrap security group; it has no
   public endpoint.
 - No SSH ingress or bastion is created. Use Systems Manager Session Manager.
 
@@ -27,22 +28,20 @@ telemetry.
 RDS generates and owns its database password through its managed Secrets
 Manager secret. The application does not receive this secret: it connects with
 an IAM database token generated from its EC2 role. Use the managed secret only
-for administration and to bootstrap the dedicated PostgreSQL IAM user. Do not
-pass other secret values through Terraform.
+for administration and the dedicated VPC-scoped CodeBuild bootstrap job. Do
+not pass the RDS password through Terraform.
 
-After the database is created, run `scripts/bootstrap_rds_iam_user.sh` from a
-host with private network access to the DB and AWS permission to read its
-managed master secret. This one-time bootstrap creates `localai_app`, grants it
-`rds_iam`, and grants the schema permissions needed to initialize the app. For
-an existing deployment, complete this bootstrap before applying the IAM
-authentication change, because that apply rolls the app instances to the new
-launch template.
+After every controlled `deploy`, CodeBuild creates or updates `localai_app`,
+grants it `rds_iam`, and grants the schema permissions needed to initialize the
+application. The CodeBuild service role has narrowly scoped access to the RDS
+administrator secret and private database network path. The application role
+does not have `rds:DescribeDBInstances`, Secrets Manager access to that secret,
+or permission to run the bootstrap job.
 
-```bash
-scripts/bootstrap_rds_iam_user.sh \
-  --db-instance-id "$(terraform -chdir=terraform/environments/prod output -raw database_instance_id)" \
-  --region ap-south-1
-```
+`scripts/bootstrap_rds_iam_user.sh` is retained only as an administrator
+recovery tool. Never run it from an application EC2 instance or broaden the app
+role to make it work; inspect or rerun the CodeBuild bootstrap job instead.
+
 Create those secrets separately, grant the app role their ARN through
 `secret_arns`, and store a JSON object whose keys correspond to application
 settings.
@@ -90,8 +89,10 @@ exist; it never overwrites an existing password:
 - Password: `changeme`
 
 Change these before exposing the service. Set `ADMIN_USERNAME` and
-`ADMIN_PASSWORD_HASH` (bcrypt) through environment variables or Secrets Manager.
-Set `AUTH_ENABLED=false` only for local development without a login gate.
+`ADMIN_PASSWORD_HASH` (bcrypt) in an application Secrets Manager JSON object,
+then add that secret ARN to `secret_arns` so the app role can read it. Do not
+use the RDS administrator secret for application credentials. Set
+`AUTH_ENABLED=false` only for local development without a login gate.
 
 Generate a bcrypt hash for a new password:
 

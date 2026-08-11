@@ -1,275 +1,237 @@
-# Dev and production deployment guide
+# End-to-end deployment guide
 
-This guide deploys the application through GitHub Actions. It uses committed
+This guide deploys the application through GitHub Actions. It uses committed,
 non-secret configuration files for environment-specific values and a GitHub
 environment secret only for the DuckDNS token.
 
-## Deploy now: command checklist
+## Fresh-fork operator runbook
 
-Run these commands from the repository root in this order. The first four steps
-are one-time setup; subsequent releases start at the GitHub Actions steps.
+Use this runbook when deploying a fork into a new AWS account. The example
+account IDs, ECR URLs, state buckets, domains, and email addresses elsewhere
+in this repository are not reusable deployment inputs.
+
+### Preflight checklist
+
+Before creating resources, confirm all of the following:
+
+- Your AWS identity can create the bootstrap resources and the workload
+  resources in `ap-south-1`, including IAM, S3, KMS, ECR, VPC, EC2, RDS,
+  CodeBuild, CloudWatch, and SNS.
+- Your GitHub identity can create environments, environment variables, and the
+  `prod` environment secret. Configure required reviewers for production.
+- Your account has sufficient EC2 quota and capacity for the selected GPU
+  instance type in the chosen Availability Zones.
+- `allowed_app_cidrs` contains your real public IP, office, or VPN CIDR. Use
+  `0.0.0.0/0` only for short-lived development access; never use `0.0.0.0/32`.
+- You understand that the initial application account is `admin` / `changeme`.
+  Configure a bcrypt `ADMIN_PASSWORD_HASH` secret before making the application
+  broadly reachable.
+
+### 1. Fork and prepare your workstation
+
+1. Fork this repository to your GitHub account or organization, then clone
+   your fork and push to its default branch.
+2. Install and authenticate the required local tools: AWS CLI, Terraform
+   (version 1.10 or later), GitHub CLI, Git, and Python 3.
+3. Authenticate both CLIs against the intended account and repository:
+
+   ```bash
+   aws sts get-caller-identity
+   gh auth login
+   gh repo view --json nameWithOwner,id,owner
+   ```
+
+   Confirm that the displayed AWS account is yours and that GitHub reports
+   your fork, not the upstream repository.
+4. Verify GPU quota and capacity in the deployment region. The default GPU
+   instance type is `g4dn.xlarge`; select a supported alternative only after
+   reviewing the module validations and model requirements.
+
+### 2. Configure deployment inputs
+
+Generate a real, digest-locked model manifest. The checked-in example has an
+invalid placeholder digest and cannot be deployed:
 
 ```bash
-# 1. Generate and commit a real model manifest.
 python3 scripts/lock_model_manifest.py \
   --model llama3.2:3b:2.0:4.0:true \
   > models/model-manifest.json
+```
 
-# 2. Create or update Bootstrap AWS resources and the GitHub OIDC role.
+Create environment input files from the examples:
+
+```bash
+cp terraform/environments/dev/terraform.tfvars.example \
+  terraform/environments/dev/terraform.tfvars
+cp terraform/environments/prod/terraform.tfvars.example \
+  terraform/environments/prod/terraform.tfvars
+```
+
+In both files, set `model_manifest_file` to
+`../../../models/model-manifest.json`. Set `allowed_app_cidrs` deliberately:
+
+```hcl
+# Recommended: your current public IP or office/VPN range.
+allowed_app_cidrs = ["203.0.113.10/32"]
+
+# Development-only alternative: permit any IPv4 client.
+# allowed_app_cidrs = ["0.0.0.0/0"]
+```
+
+Do not set `allowed_app_cidrs = ["0.0.0.0/32"]`; that permits only the single
+address `0.0.0.0`, so the public application will time out for all real users.
+
+### 3. Bootstrap the AWS account and GitHub OIDC role
+
+Choose a globally unique state-bucket name. Obtain the immutable GitHub owner
+and repository IDs from the previous `gh repo view` command, then create
+`terraform/bootstrap/terraform.tfvars`:
+
+```hcl
+state_bucket_name    = "YOUR_GLOBALLY_UNIQUE_STATE_BUCKET"
+enable_github_oidc   = true
+github_owner         = "YOUR_GITHUB_OWNER"
+github_repository    = "YOUR_REPOSITORY"
+github_owner_id      = "YOUR_NUMERIC_OWNER_ID"
+github_repository_id = "YOUR_NUMERIC_REPOSITORY_ID"
+```
+
+Apply the bootstrap stack from an administrator-controlled terminal:
+
+```bash
 terraform -chdir=terraform/bootstrap init
-terraform -chdir=terraform/bootstrap apply \
-  -var="state_bucket_name=YOUR_GLOBALLY_UNIQUE_STATE_BUCKET" \
-  -var="enable_github_oidc=true" \
-  -var="github_owner=YOUR_GITHUB_USERNAME" \
-  -var="github_repository=YOUR_REPOSITORY_NAME" \
-  -var="github_owner_id=YOUR_NUMERIC_GITHUB_OWNER_ID" \
-  -var="github_repository_id=YOUR_NUMERIC_GITHUB_REPOSITORY_ID"
+terraform -chdir=terraform/bootstrap plan
+terraform -chdir=terraform/bootstrap apply
+```
 
-# 3. Create your local, ignored operator input file and fill in its values.
+This creates your account's ECR repository, encrypted Terraform state bucket,
+KMS key, GitHub OIDC provider, and GitHub deployment role. The role trust
+policy is bound to your fork's immutable GitHub IDs. Reapply this stack whenever
+the deployment workflow needs additional AWS permissions.
+
+Verify its outputs:
+
+```bash
+terraform -chdir=terraform/bootstrap output
+```
+
+### 4. Create protected GitHub environments
+
+In your fork, open **Settings → Environments** and create `dev` and `prod`.
+For `prod`, configure required reviewers. The workflow requests an OIDC token
+for the selected environment, so the environment names must remain exactly
+`dev` and `prod` unless you also update the Terraform bootstrap inputs.
+
+Create the ignored operator input file and enter your fork and alert details:
+
+```bash
 cp .github/deployment-config/operator.env.example \
   .github/deployment-config/operator.env
 ${EDITOR:-vi} .github/deployment-config/operator.env
+```
 
-# 4. Authenticate once, then generate and synchronize both environments.
-gh auth login
+Set `GITHUB_OWNER`, `GITHUB_REPOSITORY`, and `ALARM_EMAIL`. For production,
+replace the example DuckDNS label and email if you enable DuckDNS and Let's
+Encrypt. This local file is ignored by Git and must never contain a password,
+API key, or DuckDNS token.
+
+Run the synchronization script to create GitHub environment configuration and
+commit the generated, non-secret files:
+
+```bash
 ./scripts/sync_github_environment.sh dev
 ./scripts/sync_github_environment.sh prod
 
-# 5. Commit the generated non-secret configuration and your model/config files.
 git add models/model-manifest.json \
   terraform/environments/dev/terraform.tfvars \
   terraform/environments/prod/terraform.tfvars \
   .github/deployment-config/dev.env \
   .github/deployment-config/prod.env
-git commit -m "Configure CI/CD environments"
+git commit -m "Configure deployment environments"
 git push
 ```
 
-During the production synchronization step, paste the newly rotated DuckDNS
-token only when prompted. The script saves it directly as a GitHub `prod`
-environment secret and never writes it into `operator.env`.
+When prompted during the production synchronization, enter a newly rotated
+DuckDNS token. The script sends it directly to the GitHub `prod` environment
+as a secret and does not write it to disk. The generated `dev.env` and
+`prod.env` files are non-secret, but they contain account-specific identifiers
+and settings and therefore must be regenerated for every fork.
 
-Then deploy from **GitHub → Actions → Controlled deployment**:
+### 5. Deploy and verify development
 
-| Target | First run | Second run |
-|---|---|---|
-| Dev | `environment=dev`, `operation=plan` | `environment=dev`, `operation=deploy` |
-| Prod | `environment=prod`, `operation=plan` | `environment=prod`, `operation=deploy`, then approve `prod` |
+In **GitHub → Actions → Controlled deployment**, run:
 
-Leave `image_uri` empty for the first deployment. The workflow builds and
-publishes an immutable image. The first production deploy ends at
-`https://fred-ai-assistant.duckdns.org`.
+1. `environment=dev`, `operation=plan`; review the plan artifact.
+2. `environment=dev`, `operation=deploy`; leave `image_uri` blank to build the
+   selected commit, or provide a previously built immutable ECR
+   `repository@sha256:...` reference.
 
-## What is created
+The deployment creates the development VPC, ALB, app and GPU Auto Scaling
+groups, RDS, monitoring, and a VPC-scoped CodeBuild job. That CodeBuild job
+creates the `localai_app` PostgreSQL user and grants `rds_iam`; the application
+does not receive the RDS master password.
 
-Each environment creates a VPC, private app and GPU instances, load balancers,
-RDS PostgreSQL for persistent users and chat history, CloudWatch alarms, and
-an SNS alert topic. Production also uses two app instances, two GPU instances,
-two NAT gateways, WAF, RDS Multi-AZ, and deletion protection.
-
-Development is the lower-cost test environment. Deploy it first. Promote its
-tested immutable ECR digest to production rather than rebuilding production
-from an untested commit.
-
-## Prerequisites
-
-- An AWS account with permission to create the bootstrap resources.
-- A GitHub repository containing this code and permission to create GitHub
-  environments and environment secrets.
-- Terraform installed locally for the one-time bootstrap command.
-- GitHub CLI (`gh`) installed locally and authenticated with `gh auth login`.
-- A reviewed, locked model manifest committed to the repository.
-- For production HTTPS, a DuckDNS account and a newly rotated DuckDNS token.
-
-Do not store passwords, API tokens, or private keys in a `.env` configuration
-file, Terraform variable file, or Git history.
-
-## 1. Commit a locked model manifest
-
-The example manifest has a deliberately invalid all-zero digest and cannot be
-deployed. Generate a real manifest, then commit it:
+After the workflow succeeds:
 
 ```bash
-python3 scripts/lock_model_manifest.py \
-  --model llama3.2:3b:2.0:4.0:true \
-  > models/model-manifest.json
+terraform -chdir=terraform/environments/dev init \
+  -backend-config="bucket=YOUR_GLOBALLY_UNIQUE_STATE_BUCKET" \
+  -backend-config="kms_key_id=YOUR_STATE_KMS_KEY_ARN"
+terraform -chdir=terraform/environments/dev output application_url
 ```
 
-Create `terraform/environments/dev/terraform.tfvars` and
-`terraform/environments/prod/terraform.tfvars` with at least:
-
-```hcl
-model_manifest_file = "../../../models/model-manifest.json"
-allowed_app_cidrs  = ["YOUR_PUBLIC_IP_OR_OFFICE_CIDR"]
-```
-
-Commit these files only when they contain no secrets. For production, restrict
-`allowed_app_cidrs` to your office or VPN range rather than `0.0.0.0/0`.
-
-## 2. Bootstrap AWS once
-
-The bootstrap stack creates the remote Terraform state bucket, KMS key, ECR
-repository, and GitHub OIDC deployment role. It cannot be created by the
-deployment pipeline because the pipeline needs that role before it can obtain
-AWS credentials.
-
-```bash
-terraform -chdir=terraform/bootstrap init
-
-terraform -chdir=terraform/bootstrap apply \
-  -var="state_bucket_name=YOUR_GLOBALLY_UNIQUE_STATE_BUCKET" \
-  -var="enable_github_oidc=true" \
-  -var="github_owner=YOUR_GITHUB_USERNAME" \
-  -var="github_repository=YOUR_REPOSITORY_NAME" \
-  -var="github_owner_id=YOUR_NUMERIC_GITHUB_OWNER_ID" \
-  -var="github_repository_id=YOUR_NUMERIC_GITHUB_REPOSITORY_ID"
-```
-
-GitHub repositories using immutable OIDC subjects require the numeric owner and
-repository IDs. GitHub includes both IDs in every deployment token, preventing
-a renamed or recycled repository name from inheriting the role trust.
-
-Retrieve the values needed by CI/CD:
-
-```bash
-terraform -chdir=terraform/bootstrap output -raw github_deploy_role_arn
-terraform -chdir=terraform/bootstrap output -raw ecr_repository_url
-terraform -chdir=terraform/bootstrap output -raw state_bucket_name
-terraform -chdir=terraform/bootstrap output -raw state_kms_key_arn
-```
-
-Reapply this bootstrap stack whenever the repository changes its GitHub OIDC
-permissions, such as after enabling automated Let’s Encrypt setup.
-
-## 3. Create GitHub environments
-
-In GitHub, open **Settings → Environments** and create `dev` and `prod`.
-Configure required reviewers for `prod`. The workflow selects one of these
-environments at runtime, so production reviewers must approve production jobs
-before they can read production secrets.
-
-No GitHub configuration variables are required. The non-secret values live in
-repository files in the next step.
-
-## 4. Create and synchronize non-secret CI/CD configuration
-
-Copy the local operator template:
-
-```bash
-cp .github/deployment-config/operator.env.example \
-  .github/deployment-config/operator.env
-```
-
-Edit `operator.env` with your GitHub owner/repository and alert address. It is
-ignored by Git and must never contain a DuckDNS token, password, or API key.
-Keep the production defaults for automated HTTPS:
-
-```dotenv
-PROD_ENABLE_DUCKDNS=true
-PROD_ENABLE_LETSENCRYPT=true
-PROD_DUCKDNS_SUBDOMAIN=fred-ai-assistant
-PROD_LETSENCRYPT_EMAIL=fredrickritchie@gmail.com
-```
-
-Synchronize each environment after the Bootstrap Terraform stack exists:
-
-```bash
-./scripts/sync_github_environment.sh dev
-./scripts/sync_github_environment.sh prod
-```
-
-The script fetches the role ARN, ECR URL, state bucket, and KMS key from
-Terraform Bootstrap outputs; generates `.github/deployment-config/dev.env` and
-`prod.env`; creates matching GitHub environment variables through the GitHub
-API; and prompts for the DuckDNS token only when synchronizing production.
-
-Commit the generated `dev.env` and `prod.env` files. They contain identifiers
-and settings, not credentials. The public hostname is
-`fred-ai-assistant.duckdns.org`; DuckDNS does not use `.duckdns.com`.
-
-## 5. Protect the sole GitHub secret
-
-When the production synchronization script prompts for `DUCKDNS_TOKEN`, paste a
-newly rotated token. The script sends it directly to the GitHub `prod`
-environment as an environment secret; it does not save the token in any local
-file. Do not use a repository secret or GitHub variable for this value.
-
-## 6. Deploy development
-
-1. Push the configuration and application changes to GitHub.
-2. Open **Actions → Controlled deployment → Run workflow**.
-3. Select `dev` and `plan`.
-4. Review the uploaded Terraform plan and image build output.
-5. Run the workflow again with `dev` and `deploy`.
-6. Leave `image_uri` blank to build the selected commit, or provide an
-   existing immutable ECR digest.
-7. Confirm the SNS subscription email sent to `ALARM_EMAIL`.
-8. Open the application URL shown in the workflow health-check log.
-
-The development environment is HTTP by default unless you deliberately enable
-HTTPS and configure a certificate.
-
-## 7. Deploy production with automated Let’s Encrypt HTTPS
-
-1. Run `./scripts/sync_github_environment.sh prod` after confirming
-   `operator.env` has `PROD_ENABLE_DUCKDNS=true`,
-   `PROD_ENABLE_LETSENCRYPT=true`, and the correct DuckDNS label and email.
-   This creates or updates the `DUCKDNS_TOKEN` GitHub `prod` environment secret
-   when prompted.
-3. Run **Controlled deployment** with `environment=prod` and `operation=plan`.
-   On the first deployment the plan represents the temporary HTTP bootstrap.
-4. Review it, then run the workflow again with `environment=prod` and
-   `operation=deploy`.
-5. Approve the protected production environment when GitHub requests approval.
-
-The first production deployment automatically creates a Global Accelerator,
-updates DuckDNS, issues a Let’s Encrypt DNS-01 certificate, imports it to ACM,
-enables ALB HTTPS, and redirects HTTP to HTTPS. It waits for `/healthz` before
-finishing.
-
-Open:
+Open the returned URL. Confirm the SNS subscription email, then inspect the
+following CloudWatch log groups if a deployment or login fails:
 
 ```text
-https://fred-ai-assistant.duckdns.org
+/local-ai-assistant/dev/app
+/local-ai-assistant/dev/bootstrap
+/local-ai-assistant/dev/database-bootstrap
 ```
 
-Allow a few minutes for DNS propagation and initial GPU model startup.
+If the workflow reports a database-bootstrap failure, use an administrator or
+deployment identity—not the application EC2 role—to inspect it:
 
-## 8. Promote a tested development image
+```bash
+aws logs tail /local-ai-assistant/dev/database-bootstrap --follow
+```
 
-For a later production release, copy the digest-pinned ECR image URI from the
-successful development workflow log. Run a production `plan` and `deploy` with
-that exact value in `image_uri`. This preserves the same verified application
-artifact across environments.
+After it succeeds, verify the IAM database connection from an application
+instance reached through Session Manager:
 
-## 9. Certificate renewal and alerts
+```bash
+docker exec local-ai-assistant python -c \
+  'from database import initialize_database; initialize_database(); print("IAM database connection succeeded")'
+```
 
-The **Renew DuckDNS Let’s Encrypt certificate** workflow runs monthly and can
-also be started manually from the Actions tab. It reads the certificate ARN and
-static IP from Parameter Store, refreshes the DNS-01 record, and reimports the
-renewed certificate into the same ACM certificate ARN.
+If this reports password authentication failure, the IAM user has not yet been
+granted `rds_iam`; rerun the controlled `dev` deployment or start the dedicated
+CodeBuild project with a deployment/admin identity. Do not add RDS master-secret
+or `rds:DescribeDBInstances` access to the application role.
 
-Confirm the SNS subscription email after each environment’s first deployment.
-The app and Ollama load-balancer health alarms publish both alarm and recovery
-notifications to `ALARM_EMAIL`.
+### 6. Promote to production
 
-## 10. Destroy an environment through CI/CD
+Copy the successful development image's immutable `repository@sha256:...`
+reference from the workflow log. Run a production `plan`, then a production
+`deploy` with that digest in `image_uri`; approve the protected `prod`
+environment when GitHub requests it. Do not promote a mutable tag such as
+`latest`.
 
-1. Open **Actions → Controlled deployment → Run workflow**.
-2. Select `dev` or `prod`.
-3. Set `operation=destroy`.
-4. Set `confirm_destroy` to exactly `DESTROY`.
-5. Supply the deployed immutable ECR image digest in `image_uri`.
-6. Approve the GitHub environment if required.
+With the default production operator settings, the first production deployment
+creates the DuckDNS/Let's Encrypt HTTPS path. Confirm the certificate, DNS,
+and health URL before declaring the deployment complete. The certificate-renewal
+workflow runs monthly and can also be started manually.
 
-Production teardown temporarily disables deletion protection and removes the
-versioned ALB log bucket. RDS retains a final snapshot so chat history is not
-silently erased. Delete that snapshot manually only when permanent removal is
-intended.
+### 7. Release, rollback, and teardown
 
-The bootstrap state bucket, ECR repository, and KMS key are intentionally not
-destroyed by an environment destroy. Remove them only through a separately
-reviewed bootstrap teardown after both environments are gone.
+For later releases, repeat only the development plan/deploy and production
+promotion steps. To roll back, redeploy the prior reviewed digest through the
+same workflow.
+
+To destroy an environment, run the controlled workflow with
+`operation=destroy`, `confirm_destroy=DESTROY`, and the deployed image digest.
+Production retains a final RDS snapshot. The bootstrap state bucket, KMS key,
+and ECR repository are deliberately not destroyed with an environment.
 
 ## Troubleshooting
 
@@ -277,6 +239,7 @@ reviewed bootstrap teardown after both environments are gone.
 |---|---|
 | OIDC authentication fails | Verify the GitHub owner/repository values used in bootstrap and the role ARN in the environment file. |
 | Pipeline cannot find configuration | Commit `.github/deployment-config/dev.env` or `prod.env`; only the `.example` files are not sufficient. |
+| Database bootstrap fails | Inspect `/local-ai-assistant/<environment>/database-bootstrap`; confirm the CodeBuild project can reach RDS and read the RDS master secret. |
 | First prod run fails before certificate issuance | Verify `ENABLE_DUCKDNS=true`, `ENABLE_LETSENCRYPT=true`, `DUCKDNS_SUBDOMAIN`, `LETSENCRYPT_EMAIL`, and the `DUCKDNS_TOKEN` prod secret. |
 | HTTPS is unavailable | Check the deployment log, the DuckDNS record, ACM certificate status, and the certificate-expiry alarm. |
 | No alert email | Confirm the SNS subscription message sent by AWS. |

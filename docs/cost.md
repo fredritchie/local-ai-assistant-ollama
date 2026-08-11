@@ -3,7 +3,9 @@
 Estimate date: **August 10, 2026**. Region: **Asia Pacific (Mumbai),
 `ap-south-1`**. Prices exclude taxes, discounts, Savings Plans, data transfer,
 model download traffic, CloudWatch ingestion, ECR storage, snapshots, and
-public IPv4 charges. Always confirm with the [AWS Pricing Calculator](https://calculator.aws/).
+public IPv4 charges. Refresh this estimate against the
+[AWS Pricing Calculator](https://calculator.aws/) before deploying; rates and
+availability vary by region and change over time.
 
 ## Baseline monthly estimate
 
@@ -20,6 +22,13 @@ Assumes 730 hours per month and low ALB traffic.
 | WAF base resources | Disabled | about $8 | Plus request charges |
 | Global Accelerator | Optional $18.25 | Optional $18.25 | $0.025/hour, plus IPv4 and DT-Premium |
 | **Estimated baseline** | **about $542/month** | **about $1,045/month** | Before variable services |
+
+The estimate does not include RDS instance/storage/backups, the short-lived
+database-bootstrap CodeBuild job, Secrets Manager API and secret charges, S3
+Terraform-state storage, CloudWatch Logs and metrics, EBS snapshot storage,
+WAF request charges, NAT processed data, or internet and accelerator data
+transfer. Add these to the calculator using your retention periods and
+expected traffic.
 
 The GPU tier dominates cost. Destroy development when it is not being used.
 For a portfolio demonstration, create the environment shortly before the demo
@@ -55,6 +64,7 @@ AWS positions G4dn for cost-effective machine-learning inference. See the
 - Incremental EBS snapshots and retention limits
 - One NAT Gateway in development
 - Environment-specific ASG capacity
+- Scheduled development shutdown or destroy/redeploy outside demonstrations
 - Exact model selection rather than downloading every available model
 - Resource tags for project and environment allocation
 - Leave `enable_duckdns` disabled when a stable DuckDNS entry point is not needed

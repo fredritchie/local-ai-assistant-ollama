@@ -9,6 +9,19 @@ The `ollama` image installs XFS tools and the pinned Ollama release. Terraform
 launch-template user data supplies environment-specific runtime configuration,
 the ECR image digest, model manifest, logging, and health registration.
 
+## Prerequisites and ownership
+
+Use Python 3, Ansible, and `ansible-lint` from `requirements-dev.txt`. The
+playbook uses built-in modules and does not require a separate Galaxy role or
+collection installation. Packer supplies a temporary build host; AWS
+credentials and the build region are therefore Packer concerns.
+
+Keep common operating-system packages and stable host configuration in this
+role. Keep environment-specific values—ECR digest, RDS endpoint, IAM database
+authentication settings, model manifest, CloudWatch log groups, and load
+balancer registration—in Terraform launch-template user data. Never bake
+environment secrets into an AMI.
+
 ## Local syntax check
 
 ```bash
@@ -20,6 +33,13 @@ ansible-playbook -i ansible/inventory.ini.example \
 ansible-lint ansible/playbook.yml
 ```
 
+Run `ansible --version` and `ansible-lint --version` when reproducing CI. The
+repository's pinned CI environment is authoritative; see
+[the CI workflow](../.github/workflows/ci.yml).
+
 Do not run the image playbook against an existing production instance. Build a
 new AMI, update the Terraform AMI variable, and use an Auto Scaling instance
 refresh instead.
+
+See [the Packer guide](../packer/README.md) for the supported AMI build
+commands and how to record their output in Terraform inputs.

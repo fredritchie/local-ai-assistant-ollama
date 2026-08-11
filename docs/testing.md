@@ -12,7 +12,8 @@
 - ShellCheck for operational and launch-template scripts
 - Trivy filesystem and dependency scan
 
-Run the main local checks:
+Run the core local checks after installing Python 3.12, Terraform, Docker,
+Ansible, and the packages in `requirements-dev.txt`:
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -23,6 +24,24 @@ terraform -chdir=terraform/modules/platform test
 ansible-playbook -i ansible/inventory.ini.example \
   ansible/playbook.yml --syntax-check
 ```
+
+The remaining CI checks need additional tools or pinned GitHub Actions. Install
+them locally only when you need to reproduce that part of CI:
+
+```bash
+tflint --init
+tflint --recursive --config "$(pwd)/.tflint.hcl"
+shellcheck scripts/*.sh
+./scripts/check_user_data.sh
+packer init packer
+packer fmt -check -recursive packer
+packer validate -syntax-only packer
+checkov --config-file .checkov.yml --directory terraform --framework terraform
+trivy fs --scanners vuln,secret --severity HIGH,CRITICAL .
+```
+
+GitHub Actions is the source of truth for pinned tool versions and security
+scan configuration; see [CI](../.github/workflows/ci.yml).
 
 ## Deployed integration tests
 
@@ -35,6 +54,27 @@ pytest -m integration -v
 
 The `Deployed integration tests` workflow accepts the same URL and runs both
 shell and Pytest smoke tests.
+
+## Database IAM bootstrap smoke test
+
+After a controlled `deploy`, confirm the database bootstrap CodeBuild job
+succeeded before testing chat persistence:
+
+```bash
+aws logs tail /local-ai-assistant/ENVIRONMENT/database-bootstrap --follow
+```
+
+From an application instance reached with Session Manager, verify the app can
+generate an IAM token and initialize its schema:
+
+```bash
+docker exec local-ai-assistant python -c \
+  'from database import initialize_database; initialize_database(); print("IAM database connection succeeded")'
+```
+
+This is an opt-in deployed check: it requires the private database path and the
+application instance role. Do not run the RDS IAM-user bootstrap script from
+the application instance.
 
 ## Failure testing
 

@@ -14,7 +14,8 @@ healthy Auto Scaling targets across two Availability Zones.
 
 ## Highlights
 
-- Public ALB across two AZs with ACM TLS enabled by default in production
+- Public ALB across two AZs; TLS is enabled in production when an ACM
+  certificate is configured
 - Optional DuckDNS hostname, stable Global Accelerator entry point, and
   Let's Encrypt DNS-01 certificate imported into ACM
 - Private application ASG: Nginx `:80` to Dockerized Streamlit `:8501`
@@ -24,7 +25,8 @@ healthy Auto Scaling targets across two Availability Zones.
 - Immutable ECR image digests, tag protection, scanning, and retention
 - Packer AMIs configured by Ansible, with launch-time self-configuration
 - Persistent PostgreSQL RDS for users and durable per-user chat history
-- SSM Parameter Store configuration and Secrets Manager-managed RDS credentials
+- SSM Parameter Store configuration, RDS IAM authentication, and a
+  Secrets Manager-managed RDS administrator credential
 - Versioned S3 Terraform state with S3-native locking and KMS encryption
 - JSON logs, CloudWatch Agent metrics, GPU metrics, dashboards, alarms, and traces
 - Model digest verification, dedicated EBS cache volumes, and snapshot support
@@ -62,7 +64,20 @@ Production deployment is deliberately separated into controlled stages:
 5. Deploy `dev`, run smoke tests, and review CloudWatch telemetry.
 6. Promote the same immutable image digest and model manifest to `prod`.
 
-See the [Terraform guide](terraform/README.md) for exact commands.
+For the complete operator procedure, use the
+[end-to-end deployment guide](docs/deployment-guide.md). The
+[Terraform guide](terraform/README.md) is a command reference for manual
+operations.
+
+## Deploying from your own repository and AWS account
+
+Deploy from your own fork and AWS account; the examples in this repository are
+not reusable deployment inputs. The bootstrap stack creates an account-specific
+ECR repository, encrypted state bucket, KMS key, and GitHub OIDC role.
+
+Follow the [end-to-end deployment guide](docs/deployment-guide.md) for fresh
+fork setup, configuration, automated database bootstrap, verification, HTTPS,
+promotion, rollback, and teardown.
 
 ## Manual image delivery
 
@@ -103,11 +118,12 @@ Terraform writes non-secret runtime values under:
 /local-ai-assistant/ENVIRONMENT/ollama/
 ```
 
-The application retrieves configuration through its EC2 IAM role. RDS
-generates and manages its database secret in Secrets Manager, and Terraform
-grants the app role access automatically. Optional extra Secrets Manager ARNs
-are supplied separately. Environment variables remain available only as local
-or emergency overrides.
+The application retrieves configuration through its EC2 IAM role. RDS generates
+and manages an administrator secret in Secrets Manager, but the application
+does not receive that secret. Instead, it generates a short-lived RDS IAM token
+as the `localai_app` database user. Optional application secrets are supplied
+separately through `secret_arns`. Environment variables remain available only
+as local or emergency overrides.
 
 ## CI/CD
 
@@ -116,10 +132,9 @@ GitHub OIDC role and protected `dev`/`prod` environments are configured. The
 deployment workflow builds an image, records its digest, creates a Terraform
 plan, uploads the plan artifact, and applies only when explicitly requested.
 
-See [CI/CD and promotion](docs/cicd.md).
-
-For complete environment setup, deployment, promotion, HTTPS, alerting, and
-teardown instructions, see the [detailed deployment guide](docs/deployment-guide.md).
+See [CI/CD and promotion](docs/cicd.md) for workflow behavior. For setup,
+deployment, promotion, HTTPS, alerting, and teardown, use the
+[detailed deployment guide](docs/deployment-guide.md).
 
 ## Operations and safety
 
@@ -139,9 +154,9 @@ teardown instructions, see the [detailed deployment guide](docs/deployment-guide
   expensive. Use `dev` for portfolio demonstrations and destroy it when idle.
 - Model tags can change upstream. Production only accepts the digest recorded
   in the reviewed model manifest; update that lock intentionally.
-- Production defaults to HTTPS and requires an ACM certificate and domain
-  configuration. Nginx still exposes port 80 only inside the private app tier.
-  Development can use public ALB HTTP for short-lived testing.
+- HTTPS requires an ACM certificate and domain configuration. During the first
+  automated DuckDNS/Let's Encrypt deployment, the ALB is briefly HTTP-only
+  until the certificate is issued; Nginx remains private on port 80.
 
 AWS resources are created in `ap-south-1` and incur charges. Review every plan,
 confirm GPU quotas and Availability Zone capacity, and read the cost guide

@@ -5,9 +5,12 @@ supported.
 
 ## Enable GitHub OIDC
 
-Set `enable_github_oidc = true` in the bootstrap stack and apply. Create
-protected GitHub environments named `dev` and `prod`, then create the ignored
-operator input file and synchronize it:
+Set `enable_github_oidc = true` in the bootstrap stack and apply. Set
+`github_owner_id` and `github_repository_id` to the immutable numeric IDs from
+`gh repo view --json nameWithOwner,id,owner`; the OIDC trust policy uses these
+IDs rather than mutable repository names. Create protected GitHub environments
+named `dev` and `prod`, then create the ignored operator input file and
+synchronize it:
 
 ```bash
 cp .github/deployment-config/operator.env.example \
@@ -45,6 +48,23 @@ history must be permanently erased.
 
 The bootstrap stack must be created once by an administrator before using this
 workflow, because it creates the OIDC role that GitHub Actions assumes.
+
+## Database IAM-user bootstrap
+
+After a successful `deploy` apply, the workflow starts the environment's
+VPC-scoped CodeBuild project. It creates or updates `localai_app`, grants it
+the PostgreSQL `rds_iam` role, and grants the application schema permissions.
+The application role never receives the RDS administrator secret or permission
+to run this job.
+
+If this stage fails, open the build link printed by the workflow or inspect:
+
+```bash
+aws logs tail /local-ai-assistant/ENVIRONMENT/database-bootstrap --follow
+```
+
+The deployment fails deliberately when this job fails, preventing a new app
+version from appearing healthy while database IAM authentication is incomplete.
 
 ## Promotion flow
 

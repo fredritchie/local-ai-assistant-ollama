@@ -67,6 +67,16 @@ override_data {
   values = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
 }
 
+override_data {
+  target = data.aws_iam_policy_document.database_bootstrap_assume
+  values = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
+}
+
+override_data {
+  target = data.aws_iam_policy_document.database_bootstrap
+  values = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
+}
+
 run "production_high_availability" {
   command = plan
 

@@ -3,9 +3,12 @@
 ## Deployment health
 
 ```bash
-terraform -chdir=terraform/environments/prod output -raw application_health_url
-./scripts/wait_for_application.sh "https://your-host/healthz"
-./scripts/smoke_test.sh "https://your-host"
+health_url=$(terraform -chdir=terraform/environments/prod \
+  output -raw application_health_url)
+application_url=$(terraform -chdir=terraform/environments/prod \
+  output -raw application_url)
+./scripts/wait_for_application.sh "$health_url"
+./scripts/smoke_test.sh "$application_url"
 ```
 
 Open the dashboard named by:
@@ -46,6 +49,42 @@ aws ssm start-session --target INSTANCE_ID
 ```
 
 There is no SSH key or port 22 rule.
+
+## Load balancer and application diagnostics
+
+When an application URL times out, first check the public target group in
+**EC2 → Target Groups → Targets**. A healthy EC2 instance must be registered
+on port 80 and pass `GET /healthz`; an unhealthy target is not an IAM database
+failure.
+
+For instance bootstrap and application logs, use the environment-specific
+CloudWatch groups:
+
+```bash
+aws logs tail /local-ai-assistant/ENVIRONMENT/app --follow
+aws logs tail /local-ai-assistant/ENVIRONMENT/bootstrap --follow
+aws logs tail /local-ai-assistant/ENVIRONMENT/database-bootstrap --follow
+```
+
+Replace `ENVIRONMENT` with `dev` or `prod`. The database-bootstrap log belongs
+to CodeBuild; the app EC2 role is intentionally not permitted to start it or
+read the RDS administrator secret.
+
+## RDS IAM authentication diagnostics
+
+Use Session Manager to reach an application instance, then run:
+
+```bash
+docker exec local-ai-assistant python -c \
+  'from database import initialize_database; initialize_database(); print("IAM database connection succeeded")'
+```
+
+`connection timeout expired` indicates VPC routing, NACL, or security-group
+reachability. `password authentication failed for user "localai_app"` usually
+means the database bootstrap job has not granted `rds_iam` yet. In that case,
+rerun the controlled deployment or start the CodeBuild project from an
+administrator/deployment identity; do not grant RDS administrator permissions
+to the application role.
 
 ## Bootstrap failure reporting
 
@@ -119,8 +158,10 @@ Change GPU desired capacity only after confirming:
 
 ## Destruction
 
-Production ALB deletion protection prevents accidental destruction. To remove
-production, submit a reviewed change setting `enable_deletion_protection` to
-false, apply it, archive and empty the ALB access-log bucket, then destroy.
-Development log objects are deleted with the development stack. Bootstrap state
-and ECR resources are protected separately and should not be casually destroyed.
+Use **GitHub → Actions → Controlled deployment** for normal teardown: select
+`operation=destroy`, set `confirm_destroy=DESTROY`, supply the deployed image
+digest, and approve the selected environment. The workflow temporarily disables
+production deletion protection and permits removal of the ALB log bucket before
+creating its destroy plan. Development log objects are deleted with the
+environment. Bootstrap state and ECR resources are protected separately and
+should not be casually destroyed.
