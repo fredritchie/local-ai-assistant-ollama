@@ -145,28 +145,18 @@ resource "aws_codebuild_project" "database_bootstrap" {
         build:
           commands:
             - |
-              set -Eeuo pipefail
+              set -eu
               db_json=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" --query 'DBInstances[0].{host:Endpoint.Address,port:Endpoint.Port,name:DBName,secret:MasterUserSecret.SecretArn,status:DBInstanceStatus}' --output json)
-              test "$(jq -r '.status' <<<"$db_json")" = "available"
-              db_host=$(jq -r '.host' <<<"$db_json")
-              db_port=$(jq -r '.port' <<<"$db_json")
-              db_name=$(jq -r '.name' <<<"$db_json")
-              secret_arn=$(jq -r '.secret' <<<"$db_json")
+              test "$(printf '%s' "$db_json" | jq -r '.status')" = "available"
+              db_host=$(printf '%s' "$db_json" | jq -r '.host')
+              db_port=$(printf '%s' "$db_json" | jq -r '.port')
+              db_name=$(printf '%s' "$db_json" | jq -r '.name')
+              secret_arn=$(printf '%s' "$db_json" | jq -r '.secret')
               test "$db_host" != "null" && test "$db_name" != "null" && test "$secret_arn" != "null"
               secret=$(aws secretsmanager get-secret-value --secret-id "$secret_arn" --query SecretString --output text)
-              master_username=$(jq -r '.username' <<<"$secret")
-              export PGPASSWORD=$(jq -r '.password' <<<"$secret")
-              trap 'unset PGPASSWORD' EXIT
-              psql "host=$db_host port=$db_port dbname=$db_name user=$master_username sslmode=require" --set=ON_ERROR_STOP=1 --set=db_name="$db_name" --set=app_username="$DB_IAM_USERNAME" <<'SQL'
-              SELECT format('CREATE ROLE %I LOGIN', :'app_username')
-              WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_username')
-              \gexec
-              GRANT rds_iam TO :"app_username";
-              GRANT CONNECT ON DATABASE :"db_name" TO :"app_username";
-              GRANT USAGE, CREATE ON SCHEMA public TO :"app_username";
-              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_username";
-              GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :"app_username";
-              SQL
+              master_username=$(printf '%s' "$secret" | jq -r '.username')
+              export PGPASSWORD=$(printf '%s' "$secret" | jq -r '.password')
+              psql "host=$db_host port=$db_port dbname=$db_name user=$master_username sslmode=require" --set=ON_ERROR_STOP=1 --set=db_name="$db_name" --set=app_username="$DB_IAM_USERNAME" --command "SELECT format('CREATE ROLE %I LOGIN', :'app_username') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_username') \gexec" --command 'GRANT rds_iam TO :"app_username"; GRANT CONNECT ON DATABASE :"db_name" TO :"app_username"; GRANT USAGE, CREATE ON SCHEMA public TO :"app_username"; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_username"; GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :"app_username";'
 YAML
   }
 
