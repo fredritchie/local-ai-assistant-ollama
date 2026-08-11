@@ -3,7 +3,7 @@ app_image_uri = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/local-ai-assistan
 # Replace the placeholder digest in this manifest before deployment.
 model_manifest_file = "../../../models/model-manifest.json"
 
-allowed_app_cidrs = ["106.51.100.138/32"]
+allowed_app_cidrs = ["0.0.0.0/32"]
 
 # Optional settings:
 # model_snapshot_id = "snap-0123456789abcdef0"

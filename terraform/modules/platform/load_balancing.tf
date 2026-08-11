@@ -75,6 +75,14 @@ resource "aws_security_group" "app" {
   }
 
   egress {
+    description     = "PostgreSQL to the chat database"
+    protocol        = "tcp"
+    from_port       = 5432
+    to_port         = 5432
+    security_groups = [aws_security_group.database.id]
+  }
+
+  egress {
     description = "VPC DNS"
     protocol    = "udp"
     from_port   = 53

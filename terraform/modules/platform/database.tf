@@ -48,15 +48,6 @@ resource "aws_vpc_security_group_ingress_rule" "database_from_app" {
   to_port                      = 5432
 }
 
-resource "aws_vpc_security_group_egress_rule" "app_to_database" {
-  security_group_id            = aws_security_group.app.id
-  referenced_security_group_id = aws_security_group.database.id
-  description                  = "Persistent PostgreSQL chat storage"
-  ip_protocol                  = "tcp"
-  from_port                    = 5432
-  to_port                      = 5432
-}
-
 resource "aws_db_parameter_group" "chat" {
   name_prefix = "${local.name_prefix}-chat-"
   family      = "postgres16"
