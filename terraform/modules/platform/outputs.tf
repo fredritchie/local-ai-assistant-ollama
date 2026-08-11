@@ -68,6 +68,11 @@ output "selected_availability_zones" {
   value       = local.availability_zones
 }
 
+output "instance_connect_endpoint_id" {
+  description = "Terraform-managed EC2 Instance Connect Endpoint ID."
+  value       = var.enable_instance_connect_endpoint ? aws_ec2_instance_connect_endpoint.management[0].id : null
+}
+
 output "database_endpoint" {
   description = "Private PostgreSQL endpoint used for persistent users and chat history."
   value       = aws_db_instance.chat.address

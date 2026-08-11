@@ -102,6 +102,14 @@ run "production_high_availability" {
   }
 
   assert {
+    condition = (
+      length(aws_ec2_instance_connect_endpoint.management) == 1 &&
+      length(aws_security_group.instance_connect_endpoint) == 1
+    )
+    error_message = "The management endpoint and its dedicated security group must be Terraform-managed."
+  }
+
+  assert {
     condition     = aws_lb.ollama.internal
     error_message = "Ollama must remain behind an internal load balancer."
   }

@@ -14,6 +14,11 @@ output "gpu_autoscaling_group_name" {
   value = module.platform.gpu_autoscaling_group_name
 }
 
+output "instance_connect_endpoint_id" {
+  description = "EC2 Instance Connect Endpoint used to administer private instances."
+  value       = module.platform.instance_connect_endpoint_id
+}
+
 output "dashboard_name" {
   value = module.platform.dashboard_name
 }

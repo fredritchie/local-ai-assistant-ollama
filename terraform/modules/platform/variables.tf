@@ -48,6 +48,12 @@ variable "nat_gateway_mode" {
   }
 }
 
+variable "enable_instance_connect_endpoint" {
+  description = "Create a Terraform-managed EC2 Instance Connect Endpoint for private instance administration."
+  type        = bool
+  default     = true
+}
+
 variable "app_instance_type" {
   description = "Instance type used by the Streamlit ASG."
   type        = string
