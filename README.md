@@ -1,9 +1,9 @@
 # Local AI Assistant — Production HA on AWS
 
-This is the final portfolio branch. It evolves the Docker and Ansible
-microservices deployment into a controlled, multi-AZ platform with immutable
-artifacts, autoscaling, managed configuration, observability, and environment
-separation.
+Production-oriented LLM platform on AWS with private GPU inference,
+immutable artifacts, multi-AZ autoscaling, managed configuration,
+observability, security automation, and separate development and production
+environments.
 
 Streamlit is delivered as a multi-architecture image from Amazon ECR. Nginx
 exposes each application instance on port `80`, while Ollama runs only in
