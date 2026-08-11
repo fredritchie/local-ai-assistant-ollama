@@ -4,13 +4,16 @@ resource "aws_launch_template" "app" {
   image_id      = local.app_ami_id
   instance_type = var.app_instance_type
   user_data = base64encode(templatefile("${path.module}/templates/app_user_data.sh.tftpl", {
-    app_image_uri       = var.app_image_uri
-    aws_region          = var.aws_region
-    parameter_prefix    = local.parameter_prefix
-    secret_arns         = join(",", local.app_secret_arns)
-    app_log_group       = aws_cloudwatch_log_group.app.name
-    nginx_log_group     = aws_cloudwatch_log_group.nginx.name
-    bootstrap_log_group = aws_cloudwatch_log_group.bootstrap.name
+    app_image_uri         = var.app_image_uri
+    aws_region            = var.aws_region
+    parameter_prefix      = local.parameter_prefix
+    secret_arns           = join(",", local.app_secret_arns)
+    database_host         = aws_db_instance.chat.address
+    database_name         = aws_db_instance.chat.db_name
+    database_iam_username = local.database_iam_username
+    app_log_group         = aws_cloudwatch_log_group.app.name
+    nginx_log_group       = aws_cloudwatch_log_group.nginx.name
+    bootstrap_log_group   = aws_cloudwatch_log_group.bootstrap.name
   }))
 
   iam_instance_profile {

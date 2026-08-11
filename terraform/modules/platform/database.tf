@@ -104,7 +104,7 @@ resource "aws_db_instance" "chat" {
   backup_retention_period         = var.database_backup_retention_days
   copy_tags_to_snapshot           = true
   deletion_protection             = var.enable_deletion_protection
-  skip_final_snapshot             = false
+  skip_final_snapshot             = true
   final_snapshot_identifier       = "${local.name_prefix}-chat-final"
   auto_minor_version_upgrade      = true
   performance_insights_enabled    = true

@@ -124,6 +124,10 @@ cat >/etc/local-ai-assistant/runtime.env <<'APPENV'
 AWS_REGION=${aws_region}
 CONFIG_PARAMETER_PATH=${parameter_prefix}
 CONFIG_SECRET_ARNS=${secret_arns}
+DATABASE_HOST=${database_host}
+DATABASE_NAME=${database_name}
+DATABASE_USERNAME=${database_iam_username}
+DATABASE_IAM_AUTH=true
 OTEL_SERVICE_NAME=local-ai-assistant
 OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317
 APPENV

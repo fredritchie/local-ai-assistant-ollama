@@ -77,6 +77,12 @@ data "aws_iam_policy_document" "app" {
   }
 
   statement {
+    sid       = "ConnectToChatDatabaseWithIam"
+    actions   = ["rds-db:connect"]
+    resources = ["arn:aws:rds-db:${var.aws_region}:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.chat.resource_id}/${local.database_iam_username}"]
+  }
+
+  statement {
     sid = "PublishTelemetry"
     actions = [
       "cloudwatch:PutMetricData",

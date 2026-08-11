@@ -25,8 +25,24 @@ listed secret ARNs. The GPU role reads only model parameters and publishes
 telemetry.
 
 RDS generates and owns its database password through its managed Secrets
-Manager secret. Terraform only references that secret ARN, and grants the app
-role access automatically. Do not pass other secret values through Terraform.
+Manager secret. The application does not receive this secret: it connects with
+an IAM database token generated from its EC2 role. Use the managed secret only
+for administration and to bootstrap the dedicated PostgreSQL IAM user. Do not
+pass other secret values through Terraform.
+
+After the database is created, run `scripts/bootstrap_rds_iam_user.sh` from a
+host with private network access to the DB and AWS permission to read its
+managed master secret. This one-time bootstrap creates `localai_app`, grants it
+`rds_iam`, and grants the schema permissions needed to initialize the app. For
+an existing deployment, complete this bootstrap before applying the IAM
+authentication change, because that apply rolls the app instances to the new
+launch template.
+
+```bash
+scripts/bootstrap_rds_iam_user.sh \
+  --db-instance-id "$(terraform -chdir=terraform/environments/prod output -raw database_instance_id)" \
+  --region ap-south-1
+```
 Create those secrets separately, grant the app role their ARN through
 `secret_arns`, and store a JSON object whose keys correspond to application
 settings.

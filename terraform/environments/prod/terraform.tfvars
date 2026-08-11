@@ -7,6 +7,9 @@ allowed_app_cidrs = ["0.0.0.0/0"]
 enable_https      = true
 certificate_arn   = "arn:aws:acm:ap-south-1:123456789012:certificate/uuid"
 
+enable_deletion_protection = false
+force_destroy_log_bucket   = false
+
 # Optional DuckDNS + Let's Encrypt entry point. See docs/duckdns-letsencrypt.md.
 # enable_duckdns    = true
 # duckdns_subdomain = "your-local-ai-assistant"

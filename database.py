@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+import os
 
+import boto3
 import psycopg
 from psycopg.rows import dict_row
 
 from config import (
     DATABASE_HOST,
+    DATABASE_IAM_AUTH,
     DATABASE_NAME,
     DATABASE_PASSWORD,
     DATABASE_PORT,
@@ -21,17 +24,35 @@ class DatabaseError(RuntimeError):
 
 
 def _connection_kwargs() -> dict[str, object]:
-    if not DATABASE_HOST or not DATABASE_USERNAME or not DATABASE_PASSWORD:
+    if not DATABASE_HOST or not DATABASE_USERNAME:
         raise DatabaseError(
-            "Database credentials are not configured. Set the RDS secret or "
-            "DATABASE_HOST, DATABASE_USERNAME, and DATABASE_PASSWORD."
+            "Database connection settings are not configured. Set DATABASE_HOST "
+            "and DATABASE_USERNAME."
         )
+
+    password = DATABASE_PASSWORD
+    if DATABASE_IAM_AUTH:
+        region = os.getenv("AWS_REGION") or boto3.session.Session().region_name
+        if not region:
+            raise DatabaseError("AWS_REGION is required for IAM database authentication.")
+        password = boto3.client("rds", region_name=region).generate_db_auth_token(
+            DBHostname=DATABASE_HOST,
+            Port=DATABASE_PORT,
+            DBUsername=DATABASE_USERNAME,
+            Region=region,
+        )
+    elif not password:
+        raise DatabaseError(
+            "Database credentials are not configured. Set DATABASE_PASSWORD or "
+            "enable IAM database authentication."
+        )
+
     return {
         "host": DATABASE_HOST,
         "port": DATABASE_PORT,
         "dbname": DATABASE_NAME,
         "user": DATABASE_USERNAME,
-        "password": DATABASE_PASSWORD,
+        "password": password,
         "sslmode": DATABASE_SSLMODE,
         "row_factory": dict_row,
     }

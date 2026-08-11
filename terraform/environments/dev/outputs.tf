@@ -14,6 +14,14 @@ output "gpu_autoscaling_group_name" {
   value = module.platform.gpu_autoscaling_group_name
 }
 
+output "database_iam_username" {
+  value = module.platform.database_iam_username
+}
+
+output "database_instance_id" {
+  value = module.platform.database_instance_id
+}
+
 output "dashboard_name" {
   value = module.platform.dashboard_name
 }

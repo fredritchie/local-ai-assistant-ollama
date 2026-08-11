@@ -90,6 +90,12 @@ DATABASE_PASSWORD = _setting(
     "DATABASE_PASSWORD", REMOTE_CONFIGURATION.get("PASSWORD", "")
 )
 DATABASE_SSLMODE = _setting("DATABASE_SSLMODE", "require")
+DATABASE_IAM_AUTH = _setting("DATABASE_IAM_AUTH", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 # Default admin credentials: username "admin", password "changeme".
 # Override via ADMIN_USERNAME and ADMIN_PASSWORD_HASH (bcrypt) in production.

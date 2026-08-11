@@ -73,7 +73,17 @@ output "database_endpoint" {
   value       = aws_db_instance.chat.address
 }
 
+output "database_instance_id" {
+  description = "RDS instance identifier used by the IAM database-user bootstrap command."
+  value       = aws_db_instance.chat.identifier
+}
+
 output "database_secret_arn" {
-  description = "Secrets Manager ARN containing the RDS application credentials."
+  description = "Secrets Manager ARN containing the RDS master credentials for administration and IAM-user bootstrap only."
   value       = aws_db_instance.chat.master_user_secret[0].secret_arn
+}
+
+output "database_iam_username" {
+  description = "PostgreSQL user that the application authenticates as through its EC2 IAM role."
+  value       = local.database_iam_username
 }
