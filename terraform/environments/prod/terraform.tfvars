@@ -4,8 +4,11 @@ app_image_uri = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/local-ai-assistan
 model_manifest_file = "../../../models/model-manifest.json"
 
 allowed_app_cidrs = ["0.0.0.0/0"]
-enable_https      = true
-certificate_arn   = "arn:aws:acm:ap-south-1:123456789012:certificate/uuid"
+
+# Enable only after issuing or importing an ACM certificate in this account
+# and region, then set certificate_arn to its real ARN.
+enable_https = false
+# certificate_arn = "arn:aws:acm:ap-south-1:008971653023:certificate/uuid"
 
 enable_deletion_protection = false
 force_destroy_log_bucket   = false
