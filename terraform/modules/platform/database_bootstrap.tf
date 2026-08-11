@@ -146,6 +146,11 @@ resource "aws_codebuild_project" "database_bootstrap" {
           commands:
             - |
               set -eu
+              case "$DB_IAM_USERNAME" in
+                [A-Za-z_][A-Za-z0-9_]*) ;;
+                *) echo "Invalid IAM database username" >&2; exit 2 ;;
+              esac
+              echo "Reading RDS connection metadata"
               db_json=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" --query 'DBInstances[0].{host:Endpoint.Address,port:Endpoint.Port,name:DBName,secret:MasterUserSecret.SecretArn,status:DBInstanceStatus}' --output json)
               test "$(printf '%s' "$db_json" | jq -r '.status')" = "available"
               db_host=$(printf '%s' "$db_json" | jq -r '.host')
@@ -153,10 +158,23 @@ resource "aws_codebuild_project" "database_bootstrap" {
               db_name=$(printf '%s' "$db_json" | jq -r '.name')
               secret_arn=$(printf '%s' "$db_json" | jq -r '.secret')
               test "$db_host" != "null" && test "$db_name" != "null" && test "$secret_arn" != "null"
+              echo "Reading the managed RDS master secret"
               secret=$(aws secretsmanager get-secret-value --secret-id "$secret_arn" --query SecretString --output text)
               master_username=$(printf '%s' "$secret" | jq -r '.username')
               export PGPASSWORD=$(printf '%s' "$secret" | jq -r '.password')
-              psql "host=$db_host port=$db_port dbname=$db_name user=$master_username sslmode=require" --set=ON_ERROR_STOP=1 --set=db_name="$db_name" --set=app_username="$DB_IAM_USERNAME" --command "SELECT format('CREATE ROLE %I LOGIN', :'app_username') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_username') \gexec" --command 'GRANT rds_iam TO :"app_username"; GRANT CONNECT ON DATABASE :"db_name" TO :"app_username"; GRANT USAGE, CREATE ON SCHEMA public TO :"app_username"; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_username"; GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :"app_username";'
+              psql_connection="host=$db_host port=$db_port dbname=$db_name user=$master_username sslmode=require"
+              echo "Ensuring PostgreSQL IAM user exists"
+              role_exists=$(psql "$psql_connection" --tuples-only --no-align --command "SELECT 1 FROM pg_roles WHERE rolname = '$DB_IAM_USERNAME'")
+              if [ "$role_exists" != "1" ]; then
+                psql "$psql_connection" --command "CREATE ROLE \"$DB_IAM_USERNAME\" LOGIN"
+              fi
+              echo "Granting IAM authentication and application database permissions"
+              psql "$psql_connection" --command "GRANT rds_iam TO \"$DB_IAM_USERNAME\""
+              psql "$psql_connection" --command "GRANT CONNECT ON DATABASE \"$db_name\" TO \"$DB_IAM_USERNAME\""
+              psql "$psql_connection" --command "GRANT USAGE, CREATE ON SCHEMA public TO \"$DB_IAM_USERNAME\""
+              psql "$psql_connection" --command "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"$DB_IAM_USERNAME\""
+              psql "$psql_connection" --command "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO \"$DB_IAM_USERNAME\""
+              echo "PostgreSQL IAM user bootstrap completed"
 YAML
   }
 
