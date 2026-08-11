@@ -305,8 +305,11 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
-    sid       = "CreateDuckDNSRenewalToken"
-    actions   = ["secretsmanager:CreateSecret"]
+    sid = "CreateManagedSecrets"
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:TagResource",
+    ]
     resources = ["*"]
   }
 
