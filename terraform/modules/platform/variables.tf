@@ -51,7 +51,7 @@ variable "nat_gateway_mode" {
 variable "app_instance_type" {
   description = "Instance type used by the Streamlit ASG."
   type        = string
-  default     = "t4g.small"
+  default     = "t4g.medium"
 
   validation {
     condition     = can(regex("^(t3|t3a|t4g)\\.(small|medium|large)$", var.app_instance_type))
