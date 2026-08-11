@@ -5,5 +5,26 @@
     "preload": true,
     "size_gib": 2.0,
     "vram_gib": 4.0
+  },
+  {
+    "name": "qwen3:4b",
+    "digest": "sha256:359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+    "preload": false,
+    "size_gib": 2.4,
+    "vram_gib": 5.0
+  },
+  {
+    "name": "gemma3:4b",
+    "digest": "sha256:a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a",
+    "preload": false,
+    "size_gib": 3.2,
+    "vram_gib": 6.0
+  },
+  {
+    "name": "mistral:7b",
+    "digest": "sha256:6577803aa9a036369e481d648a2baebb381ebc6e897f2bb9a766a2aa7bfbc1cf",
+    "preload": false,
+    "size_gib": 4.1,
+    "vram_gib": 7.0
   }
 ]

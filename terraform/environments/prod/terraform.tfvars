@@ -8,7 +8,7 @@ allowed_app_cidrs = ["0.0.0.0/0"]
 # Enable only after issuing or importing an ACM certificate in this account
 # and region, then set certificate_arn to its real ARN.
 enable_https = true
-# certificate_arn = "arn:aws:acm:ap-south-1:008971653023:certificate/uuid"
+# certificate_arn = "arn:aws:acm:ap-south-1:AWS_ACCOUNT_ID:certificate/uuid"
 
 enable_deletion_protection = false
 force_destroy_log_bucket   = false
@@ -22,4 +22,4 @@ force_destroy_log_bucket   = false
 # Receives an email when app or Ollama target health checks fail. Confirm the
 # SNS subscription email AWS sends after apply.
 # alarm_email       = "operator@example.com"
-# secret_arns       = ["arn:aws:secretsmanager:ap-south-1:123456789012:secret:local-ai/prod/app-xxxxxx"]
+# secret_arns       = ["arn:aws:secretsmanager:ap-south-1:AWS_ACCOUNT_ID:secret:local-ai/prod/app-xxxxxx"]
