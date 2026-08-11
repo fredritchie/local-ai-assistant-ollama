@@ -29,10 +29,18 @@ resource "aws_security_group" "database_bootstrap" {
   }
 
   egress {
-    description = "Package and AWS API access through NAT"
+    description = "HTTPS package and AWS API access through NAT"
     protocol    = "tcp"
     from_port   = 443
     to_port     = 443
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "HTTP Ubuntu package repositories through NAT"
+    protocol    = "tcp"
+    from_port   = 80
+    to_port     = 80
     cidr_blocks = ["0.0.0.0/0"]
   }
 
