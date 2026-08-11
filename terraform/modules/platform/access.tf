@@ -1,3 +1,4 @@
+#checkov:skip=CKV2_AWS_5: Attached to the EC2 Instance Connect Endpoint through security_group_ids.
 resource "aws_security_group" "instance_connect_endpoint" {
   count = var.enable_instance_connect_endpoint ? 1 : 0
 
@@ -36,6 +37,7 @@ resource "aws_vpc_security_group_egress_rule" "instance_connect_to_gpu" {
   to_port                      = 22
 }
 
+#checkov:skip=CKV_AWS_24: SSH is restricted to the EC2 Instance Connect Endpoint security group, not a public CIDR.
 resource "aws_vpc_security_group_ingress_rule" "app_from_instance_connect" {
   count = var.enable_instance_connect_endpoint ? 1 : 0
 
@@ -47,6 +49,7 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_instance_connect" {
   to_port                      = 22
 }
 
+#checkov:skip=CKV_AWS_24: SSH is restricted to the EC2 Instance Connect Endpoint security group, not a public CIDR.
 resource "aws_vpc_security_group_ingress_rule" "gpu_from_instance_connect" {
   count = var.enable_instance_connect_endpoint ? 1 : 0
 
