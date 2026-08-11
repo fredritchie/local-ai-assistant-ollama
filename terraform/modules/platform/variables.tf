@@ -302,7 +302,7 @@ variable "force_destroy_log_bucket" {
 variable "database_instance_class" {
   description = "RDS PostgreSQL instance class used for identities and chat history."
   type        = string
-  default     = "db.t4g.micro"
+  default     = "db.t4g.small"
 }
 
 variable "database_allocated_storage" {
