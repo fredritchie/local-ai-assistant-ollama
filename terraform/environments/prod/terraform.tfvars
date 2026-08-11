@@ -1,7 +1,7 @@
 app_image_uri = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/local-ai-assistant@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-# Replace the placeholder digest in this manifest before deployment.
-model_manifest_file = "../../../models/model-manifest.example.json"
+# Use the locked manifest containing the model's verified digest.
+model_manifest_file = "../../../models/model-manifest.json"
 
 allowed_app_cidrs = ["0.0.0.0/0"]
 enable_https      = true
