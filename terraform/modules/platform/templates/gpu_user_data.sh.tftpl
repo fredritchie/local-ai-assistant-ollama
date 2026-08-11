@@ -8,8 +8,25 @@ mkdir -p /var/lib/local-ai /var/log/ollama /var/lib/ollama-models
 export DEBIAN_FRONTEND=noninteractive
 export HOME=/root
 
+architecture=$(dpkg --print-architecture)
+case "$${architecture}" in
+  amd64) aws_cli_arch=x86_64 ;;
+  arm64) aws_cli_arch=aarch64 ;;
+  *) echo "Unsupported architecture: $${architecture}" >&2; exit 1 ;;
+esac
+
 apt-get update
-apt-get install -y --no-install-recommends awscli ca-certificates curl jq xfsprogs
+apt-get install -y --no-install-recommends ca-certificates curl jq unzip xfsprogs
+
+if ! command -v aws >/dev/null 2>&1; then
+  aws_cli_dir=$(mktemp -d /tmp/aws-cli.XXXXXX)
+  curl --fail --silent --show-error --location \
+    "https://awscli.amazonaws.com/awscli-exe-linux-$${aws_cli_arch}.zip" \
+    --output "$${aws_cli_dir}/awscliv2.zip"
+  unzip -q "$${aws_cli_dir}/awscliv2.zip" -d "$${aws_cli_dir}"
+  "$${aws_cli_dir}/aws/install"
+  rm -rf -- "$${aws_cli_dir}"
+fi
 
 root_source=$(readlink -f "$(findmnt -n -o SOURCE /)")
 root_parent=$(lsblk -no PKNAME "$${root_source}" 2>/dev/null || true)
@@ -103,7 +120,6 @@ sed -i 's/OLLAMA_HOST=127.0.0.1:11434/OLLAMA_HOST=0.0.0.0:11434/' \
 systemctl daemon-reload
 systemctl restart ollama
 
-architecture=$(dpkg --print-architecture)
 if ! command -v amazon-cloudwatch-agent-ctl >/dev/null 2>&1; then
   curl --fail --silent --show-error --location \
     "https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/$${architecture}/latest/amazon-cloudwatch-agent.deb" \

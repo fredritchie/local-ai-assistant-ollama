@@ -7,16 +7,26 @@ trap 'touch /var/lib/local-ai/bootstrap-failed' ERR
 mkdir -p /var/lib/local-ai /etc/local-ai-assistant
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get update
-apt-get install -y --no-install-recommends awscli ca-certificates curl docker.io jq nginx
-systemctl enable --now docker nginx
-
 architecture=$(dpkg --print-architecture)
 case "$${architecture}" in
-  amd64) cw_arch=amd64 ;;
-  arm64) cw_arch=arm64 ;;
+  amd64) aws_cli_arch=x86_64; cw_arch=amd64 ;;
+  arm64) aws_cli_arch=aarch64; cw_arch=arm64 ;;
   *) echo "Unsupported architecture: $${architecture}" >&2; exit 1 ;;
 esac
+
+apt-get update
+apt-get install -y --no-install-recommends ca-certificates curl docker.io jq nginx unzip
+systemctl enable --now docker nginx
+
+if ! command -v aws >/dev/null 2>&1; then
+  aws_cli_dir=$(mktemp -d /tmp/aws-cli.XXXXXX)
+  curl --fail --silent --show-error --location \
+    "https://awscli.amazonaws.com/awscli-exe-linux-$${aws_cli_arch}.zip" \
+    --output "$${aws_cli_dir}/awscliv2.zip"
+  unzip -q "$${aws_cli_dir}/awscliv2.zip" -d "$${aws_cli_dir}"
+  "$${aws_cli_dir}/aws/install"
+  rm -rf -- "$${aws_cli_dir}"
+fi
 
 if ! command -v amazon-cloudwatch-agent-ctl >/dev/null 2>&1; then
   curl --fail --silent --show-error --location \
