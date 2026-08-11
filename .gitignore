@@ -36,4 +36,4 @@ packer/packer_cache/
 *._*
 
 !*.tfvars
-*.env
+# *.env

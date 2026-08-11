@@ -145,6 +145,7 @@ deployment, promotion, HTTPS, alerting, and teardown, use the
 - [Operations, deployment, and recovery](docs/operations.md)
 - [Testing strategy](docs/testing.md)
 - [Cost estimate and GPU selection](docs/cost.md)
+- [Validated production deployment evidence](docs/evidence/production-deployment.md)
 
 ## Important limitations
 
