@@ -1,0 +1,22 @@
+# Default ownership for repository changes.
+* @fredritchie
+
+# Application and automated tests.
+/*.py @fredritchie
+/tests/ @fredritchie
+/Dockerfile @fredritchie
+
+# Infrastructure, host images, configuration, and operational automation.
+/terraform/ @fredritchie
+/packer/ @fredritchie
+/ansible/ @fredritchie
+/scripts/ @fredritchie
+
+# Delivery workflows and security policy configuration.
+/.github/ @fredritchie
+/.checkov.yml @fredritchie
+/.tflint.hcl @fredritchie
+
+# Architecture, operating guides, deployment evidence, and repository entry point.
+/docs/ @fredritchie
+/README.md @fredritchie

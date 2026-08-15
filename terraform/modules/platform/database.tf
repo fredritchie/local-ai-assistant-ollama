@@ -1,6 +1,6 @@
 resource "aws_db_subnet_group" "chat" {
   name_prefix = "${local.name_prefix}-chat-"
-  subnet_ids  = aws_subnet.app[*].id
+  subnet_ids  = aws_subnet.database[*].id
 
   tags = merge(local.common_tags, { Name = "${local.name_prefix}-chat" })
 }

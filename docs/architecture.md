@@ -1,5 +1,19 @@
 # Production architecture and failure domains
 
+This guide defines the production request paths, network and availability-zone
+boundaries, failure behavior, scaling limits, and independently versioned
+artifacts.
+
+> **Documentation:** [Index](README.md)
+> · [All architecture diagrams](diagrams/README.md)
+> · [Deployment guide](deployment-guide.md)
+
+## Architecture context
+
+### Production AWS topology
+
+![Main production AWS architecture](diagrams/production_aws_reference_architecture.png)
+
 ## Request path
 
 ![Optional DuckDNS and Let's Encrypt HTTPS path](domain-tls-flow.svg)
@@ -19,10 +33,11 @@ Controlled deployment
   → PostgreSQL RDS (creates/grants the IAM database user)
 ```
 
-The public ALB and both Auto Scaling Groups span two Availability Zones. The
-application and GPU instances have no public IP addresses. Only the public ALB
-accepts internet traffic. Security-group references restrict both internal
-hops.
+The public ALB, both Auto Scaling Groups, and the RDS DB subnet group span two
+Availability Zones. RDS uses dedicated private database subnets whose route
+table has no NAT or internet default route. Application and GPU instances have
+no public IP addresses. Only the public ALB accepts internet traffic.
+Security-group references restrict the internal service and database hops.
 
 The database-bootstrap job is not on the request path. It runs after a
 successful infrastructure deployment, uses a dedicated security group and
@@ -89,3 +104,10 @@ through a reviewed deployment after checking EC2 quotas and AZ availability.
 
 This permits independent rollback of host image, application image, and model
 cache.
+
+## Implementation references
+
+- Terraform source: [`network.tf`](../terraform/modules/platform/network.tf),
+  [`compute.tf`](../terraform/modules/platform/compute.tf),
+  [`database.tf`](../terraform/modules/platform/database.tf), and
+  [`load_balancing.tf`](../terraform/modules/platform/load_balancing.tf)

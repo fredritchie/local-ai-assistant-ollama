@@ -1,5 +1,18 @@
 # Testing strategy
 
+This guide separates fast continuous-integration checks from deployed smoke,
+database-bootstrap, integration, and explicitly approved failure tests.
+
+> **Documentation:** [Index](README.md)
+> · [All architecture diagrams](diagrams/README.md)
+> · [Deployment guide](deployment-guide.md)
+
+## Architecture context
+
+### CI and delivery validation
+
+![CI/CD validation and immutable artifact promotion](diagrams/cicd_immutable_artifact_promotion_architecture.png)
+
 ## Fast CI checks
 
 - Ruff and Pytest with coverage
@@ -10,6 +23,8 @@
 - Ansible syntax and ansible-lint
 - Packer formatting and syntax validation
 - ShellCheck for operational and launch-template scripts
+- Markdown structure, internal and external links, and Draw.io XML validation
+- Reproducible architecture rendering with pinned Draw.io 31.1.8
 - Trivy filesystem and dependency scan
 
 Run the core local checks after installing Python 3.12, Terraform, Docker,
@@ -33,6 +48,8 @@ tflint --init
 tflint --recursive --config "$(pwd)/.tflint.hcl"
 shellcheck scripts/*.sh
 ./scripts/check_user_data.sh
+python scripts/check_documentation.py --check-external
+./scripts/render_architecture_diagrams.sh --check
 packer init packer
 packer fmt -check -recursive packer
 packer validate -syntax-only packer
@@ -88,3 +105,10 @@ For a controlled non-production exercise:
 
 Do not automate instance termination in ordinary CI. Failure injection is a
 separate, explicitly approved infrastructure test.
+
+## Implementation references
+
+- CI source: [`ci.yml`](../.github/workflows/ci.yml) and
+  [`integration.yml`](../.github/workflows/integration.yml)
+- Terraform topology tests, including the dedicated two-AZ DB subnet tier, are
+  defined in [`platform.tftest.hcl`](../terraform/modules/platform/tests/platform.tftest.hcl).

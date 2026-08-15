@@ -109,8 +109,18 @@ run "production_high_availability" {
   }
 
   assert {
-    condition     = length(aws_subnet.public) == 2 && length(aws_subnet.app) == 2 && length(aws_subnet.gpu) == 2
+    condition     = length(aws_subnet.public) == 2 && length(aws_subnet.app) == 2 && length(aws_subnet.gpu) == 2 && length(aws_subnet.database) == 2
     error_message = "Every network tier must span two Availability Zones."
+  }
+
+  assert {
+    condition     = aws_subnet.database[0].cidr_block == cidrsubnet(var.vpc_cidr, 8, 30) && aws_subnet.database[1].cidr_block == cidrsubnet(var.vpc_cidr, 8, 31)
+    error_message = "The dedicated database tier must use its reserved, non-overlapping CIDR ranges."
+  }
+
+  assert {
+    condition     = length(aws_route_table_association.database) == 2
+    error_message = "Both database subnets must use the dedicated database route table."
   }
 
   assert {

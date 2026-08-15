@@ -1,5 +1,19 @@
 # Operations and recovery
 
+This runbook covers health verification, alerting, diagnostics, database
+authentication, rollback, capacity changes, certificate operations, and
+controlled teardown.
+
+> **Documentation:** [Index](README.md)
+> · [All architecture diagrams](diagrams/README.md)
+> · [Deployment guide](deployment-guide.md)
+
+## Architecture context
+
+### Telemetry and operational visibility
+
+![Observability and monitoring architecture](diagrams/observability_monitoring_architecture.png)
+
 ## Deployment health
 
 ```bash
@@ -136,8 +150,8 @@ openssl s_client \
 
 If renewal fails, run the protected workflow manually and inspect its logs.
 The CloudWatch certificate-expiry alarm warns when fewer than 30 days remain.
-See [DuckDNS and Let's Encrypt HTTPS](duckdns-letsencrypt.md) for setup and
-recovery details.
+See the [deployment guide](deployment-guide.md#optional-duckdns-and-tls-lifecycle)
+for certificate setup, renewal, and recovery procedures.
 
 ## Host rollback
 
@@ -165,3 +179,11 @@ production deletion protection and permits removal of the ALB log bucket before
 creating its destroy plan. Development log objects are deleted with the
 environment. Bootstrap state and ECR resources are protected separately and
 should not be casually destroyed.
+
+## Implementation references
+
+- Monitoring source: [`observability.tf`](../terraform/modules/platform/observability.tf)
+  and [`logging.tf`](../terraform/modules/platform/logging.tf)
+- Recovery tooling: [`wait_for_application.sh`](../scripts/wait_for_application.sh),
+  [`report_instance_failures.sh`](../scripts/report_instance_failures.sh), and
+  [`smoke_test.sh`](../scripts/smoke_test.sh)

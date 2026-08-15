@@ -59,6 +59,20 @@ resource "aws_subnet" "gpu" {
   })
 }
 
+resource "aws_subnet" "database" {
+  count = 2
+
+  vpc_id                  = aws_vpc.main.id
+  availability_zone       = local.availability_zones[count.index]
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, 30 + count.index)
+  map_public_ip_on_launch = false
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-database-${local.availability_zones[count.index]}"
+    Tier = "private-database"
+  })
+}
+
 resource "aws_eip" "nat" {
   count = var.nat_gateway_mode == "per_az" ? 2 : 1
 
@@ -123,4 +137,19 @@ resource "aws_route_table_association" "gpu" {
 
   subnet_id      = aws_subnet.gpu[count.index].id
   route_table_id = aws_route_table.private[count.index].id
+}
+
+resource "aws_route_table" "database" {
+  vpc_id = aws_vpc.main.id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-database-routes"
+  })
+}
+
+resource "aws_route_table_association" "database" {
+  count = 2
+
+  subnet_id      = aws_subnet.database[count.index].id
+  route_table_id = aws_route_table.database.id
 }

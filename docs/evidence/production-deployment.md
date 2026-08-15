@@ -6,6 +6,13 @@ useful for reproducing the deployment, including the AWS account ID, resource
 ARNs, database endpoint, public IP addresses, and email addresses, are
 intentionally omitted.
 
+> **Evidence boundary:** This page records the state observed on August 11,
+> 2026. It is not proof that later repository changes have been deployed.
+
+> **Documentation:** [Index](../README.md)
+> · [All architecture diagrams](../diagrams/README.md)
+> · [Operations guide](../operations.md)
+
 ## Deployment record
 
 | Field | Evidence |
@@ -72,6 +79,12 @@ as proof of browser TLS validity.
 
 Dedicated public, application, and GPU subnets are present across
 `ap-south-1a` and `ap-south-1b`.
+
+> The screenshots in this evidence record describe the deployment captured at
+> that time. Current Terraform also defines two dedicated database subnets and
+> a DB-only route table with no NAT or internet default route. A new deployment
+> and evidence capture are required before claiming that change as observed
+> production state.
 
 ![Production public, application, and GPU subnets](images/03-multi-az-subnets.png)
 
@@ -143,3 +156,10 @@ Re-run the deployed integration test locally when needed:
 INTEGRATION_BASE_URL=https://fred-ai-assistant.duckdns.org \
   pytest -v -m integration
 ```
+
+## Implementation references
+
+- Current topology source: [`network.tf`](../../terraform/modules/platform/network.tf)
+  and [`database.tf`](../../terraform/modules/platform/database.tf)
+- Deployment verification source: [`integration.yml`](../../.github/workflows/integration.yml)
+  and [`smoke_test.sh`](../../scripts/smoke_test.sh)

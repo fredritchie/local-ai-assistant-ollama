@@ -1,5 +1,18 @@
 # Model lifecycle
 
+This guide defines model identity locking, GPU-local cache initialization,
+digest verification, capacity planning, promotion, and rollback.
+
+> **Documentation:** [Index](README.md)
+> · [All architecture diagrams](diagrams/README.md)
+> · [Operations guide](operations.md)
+
+## Architecture context
+
+### Model identity and per-node GPU cache
+
+![Model lifecycle and GPU cache architecture](diagrams/model_lifecycle_gpu_cache_architecture.png)
+
 ## Locking models
 
 An Ollama tag is convenient but can move. The production bootstrap accepts a
@@ -90,3 +103,12 @@ increase memory consumption.
 The bootstrap defaults to one loaded model and one parallel request per GPU.
 Load-test before increasing either value. Ollama documents the relationship
 between parallelism, context, and memory in its [GPU and concurrency FAQ](https://docs.ollama.com/faq).
+
+## Implementation references
+
+- [`lock_model_manifest.py`](../scripts/lock_model_manifest.py) creates the
+  reviewed model identity.
+- [`gpu_user_data.sh.tftpl`](../terraform/modules/platform/templates/gpu_user_data.sh.tftpl)
+  verifies the digest, prepares the EBS cache, and starts Ollama.
+- [`compute.tf`](../terraform/modules/platform/compute.tf) defines GPU capacity
+  and per-node model storage.

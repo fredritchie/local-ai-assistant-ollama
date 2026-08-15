@@ -4,6 +4,35 @@ This guide deploys the application through GitHub Actions. It uses committed,
 non-secret configuration files for environment-specific values and a GitHub
 environment secret only for the DuckDNS token.
 
+> **Documentation:** [Index](README.md)
+> · [All architecture diagrams](diagrams/README.md)
+> · [Operations guide](operations.md)
+
+## Architecture context
+
+### Controlled artifact promotion
+
+![CI/CD and immutable artifact promotion](diagrams/cicd_immutable_artifact_promotion_architecture.png)
+
+## Delivery control model
+
+- GitHub Actions authenticates with short-lived OIDC credentials. The
+  bootstrap trust policy binds the deployment role to immutable GitHub owner
+  and repository IDs.
+- Protected `dev` and `prod` environments gate jobs before Terraform planning;
+  production should require reviewers.
+- `operation=plan` uploads a reviewable saved plan without changing AWS.
+  `operation=deploy` creates and applies a plan in the approved environment.
+- Leaving `image_uri` empty builds the selected commit. Supplying
+  `repository@sha256:...` reuses a previously tested immutable image.
+- After apply, the workflow runs the VPC-scoped database-bootstrap CodeBuild
+  project. A bootstrap failure fails the deployment before the new application
+  is accepted as healthy.
+- `operation=destroy` requires `confirm_destroy=DESTROY`. Production deletion
+  protection is disabled only inside that explicitly approved workflow path.
+- CI never applies or destroys production automatically on push. Environment
+  concurrency permits only one infrastructure operation at a time.
+
 ## Fresh-fork operator runbook
 
 Use this runbook when deploying a fork into a new AWS account. The example
@@ -167,7 +196,7 @@ In **GitHub → Actions → Controlled deployment**, run:
    `repository@sha256:...` reference.
 
 The deployment creates the development VPC, ALB, app and GPU Auto Scaling
-groups, RDS, monitoring, and a VPC-scoped CodeBuild job. That CodeBuild job
+groups, two dedicated database subnets, RDS, monitoring, and a VPC-scoped CodeBuild job. That CodeBuild job
 creates the `localai_app` PostgreSQL user and grants `rds_iam`; the application
 does not receive the RDS master password.
 
@@ -233,6 +262,62 @@ To destroy an environment, run the controlled workflow with
 Production retains a final RDS snapshot. The bootstrap state bucket, KMS key,
 and ECR repository are deliberately not destroyed with an environment.
 
+## Optional DuckDNS and TLS lifecycle
+
+TLS terminates at the public ALB, so the public certificate must be imported
+into ACM rather than installed on private Nginx instances. The controlled
+workflow uses a DuckDNS DNS-01 challenge, imports the certificate into ACM in
+`ap-south-1`, and redirects HTTP to HTTPS after the certificate is available.
+No private key is stored in Terraform state or on EC2.
+
+### Initial provisioning
+
+Set these values in the ignored
+`.github/deployment-config/operator.env` before synchronizing production:
+
+```dotenv
+PROD_ENABLE_DUCKDNS=true
+PROD_ENABLE_LETSENCRYPT=true
+PROD_DUCKDNS_SUBDOMAIN=your-local-ai-assistant
+PROD_LETSENCRYPT_EMAIL=operator@example.com
+```
+
+Run `./scripts/sync_github_environment.sh prod` and enter the rotated DuckDNS
+token when prompted. The script writes non-secret configuration to the
+protected GitHub environment and sends the token directly to the
+`DUCKDNS_TOKEN` environment secret. The first production deploy creates the
+Global Accelerator and HTTP bootstrap path, updates DuckDNS, imports the
+certificate, and applies the final HTTPS listener.
+
+### Renewal and expiry monitoring
+
+The `Renew DuckDNS Let's Encrypt certificate` workflow runs monthly and can be
+started manually. It retrieves the DuckDNS token from Secrets Manager,
+reissues the certificate, and imports it into the existing ACM ARN. CloudWatch
+raises an alarm when fewer than 30 days remain before expiry.
+
+### Recovery
+
+If DNS update or issuance fails, correct `operator.env`, rerun the environment
+synchronization, and rerun the controlled production deployment. Do not create
+a placeholder certificate ARN or manually remove workflow-managed Global
+Accelerator and Parameter Store values. If renewal introduces a bad
+certificate, restore the previous ACM ARN in Parameter Store and redeploy
+before investigating DNS and issuance logs.
+
+### Availability limitation
+
+Global Accelerator supplies two stable IPv4 addresses, but DuckDNS accepts one
+IPv4 address for a subdomain. This integration publishes the first anycast
+address. Use Route 53 or another DNS provider with multiple A-record support
+when both accelerator addresses must be published.
+
+Protocol and service references:
+
+- [DuckDNS update API](https://www.duckdns.org/spec.jsp)
+- [Let's Encrypt DNS-01 challenge](https://letsencrypt.org/docs/challenge-types/)
+- [AWS ACM imported certificates](https://docs.aws.amazon.com/acm/latest/userguide/import-certificate.html)
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -245,6 +330,19 @@ and ECR repository are deliberately not destroyed with an environment.
 | No alert email | Confirm the SNS subscription message sent by AWS. |
 | App health wait times out | Review the app and bootstrap CloudWatch log groups; initial GPU model startup can take several minutes. |
 
-For implementation details, see [CI/CD](cicd.md),
-[DuckDNS and Let’s Encrypt](duckdns-letsencrypt.md), and
+For runtime diagnostics and rollback procedures, see
 [Operations and recovery](operations.md).
+
+## Implementation references
+
+- Delivery source: [`ci.yml`](../.github/workflows/ci.yml),
+  [`deploy.yml`](../.github/workflows/deploy.yml),
+  [`renew-certificate.yml`](../.github/workflows/renew-certificate.yml),
+  [`build_and_push.sh`](../scripts/build_and_push.sh),
+  [`deploy.sh`](../scripts/deploy.sh),
+  [`terraform/environments/dev`](../terraform/environments/dev/), and
+  [`terraform/environments/prod`](../terraform/environments/prod/)
+- Environment and certificate automation:
+  [`sync_github_environment.sh`](../scripts/sync_github_environment.sh),
+  [`update_duckdns.sh`](../scripts/update_duckdns.sh), and
+  [`issue_letsencrypt_duckdns.sh`](../scripts/issue_letsencrypt_duckdns.sh)

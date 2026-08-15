@@ -10,7 +10,20 @@ exposes each application instance on port `80`, while Ollama runs only in
 private GPU subnets. Public and internal Application Load Balancers route to
 healthy Auto Scaling targets across two Availability Zones.
 
-![Production architecture](docs/architecture.svg)
+## Main architecture
+
+![Main production AWS architecture](docs/diagrams/production_aws_reference_architecture.png)
+
+See the [complete architecture diagram catalogue](docs/diagrams/README.md) for
+all nine detailed diagrams and their editable Draw.io sources. Executable
+topology is defined by [`network.tf`](terraform/modules/platform/network.tf),
+[`compute.tf`](terraform/modules/platform/compute.tf),
+[`database.tf`](terraform/modules/platform/database.tf), and
+[`load_balancing.tf`](terraform/modules/platform/load_balancing.tf).
+
+> **Diagram navigation:** [Open all architecture diagrams](docs/diagrams/README.md)
+> · [Open the simplified HA overview](docs/architecture.svg)
+> · [Open the DuckDNS/TLS flow](docs/domain-tls-flow.svg)
 
 ## Highlights
 
@@ -20,6 +33,7 @@ healthy Auto Scaling targets across two Availability Zones.
   Let's Encrypt DNS-01 certificate imported into ACM
 - Private application ASG: Nginx `:80` to Dockerized Streamlit `:8501`
 - Private GPU ASG behind an internal Ollama ALB
+- Dedicated private database subnets with no NAT or internet default route
 - Production capacity of two app and two `g4dn.xlarge` GPU instances
 - Cost-reduced development capacity with one app, one GPU, and one NAT Gateway
 - Immutable ECR image digests, tag protection, scanning, and retention
@@ -48,7 +62,7 @@ healthy Auto Scaling targets across two Availability Zones.
 │   ├── environments/prod/   Multi-AZ HA environment state and settings
 │   └── modules/platform/    Network, compute, IAM, load balancing, and telemetry
 ├── tests/                   Unit and optional deployed integration tests
-└── docs/                    Architecture and operational guides
+└── docs/                    Architecture, diagram catalogue, and operational guides
 ```
 
 ## Deployment sequence
@@ -132,14 +146,14 @@ GitHub OIDC role and protected `dev`/`prod` environments are configured. The
 deployment workflow builds an image, records its digest, creates a Terraform
 plan, uploads the plan artifact, and applies only when explicitly requested.
 
-See [CI/CD and promotion](docs/cicd.md) for workflow behavior. For setup,
-deployment, promotion, HTTPS, alerting, and teardown, use the
-[detailed deployment guide](docs/deployment-guide.md).
+For workflow controls, setup, deployment, immutable promotion, HTTPS,
+alerting, rollback, and teardown, use the
+[production deployment guide](docs/deployment-guide.md).
 
 ## Operations and safety
 
+- [Documentation index](docs/README.md)
 - [Architecture and failure domains](docs/architecture.md)
-- [DuckDNS and Let's Encrypt HTTPS](docs/duckdns-letsencrypt.md)
 - [Security model](docs/security.md)
 - [Model lifecycle and rollback](docs/models.md)
 - [Operations, deployment, and recovery](docs/operations.md)

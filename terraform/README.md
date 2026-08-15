@@ -4,6 +4,16 @@ Use the [end-to-end deployment guide](../docs/deployment-guide.md) for the
 normal fresh-fork and GitHub Actions workflow. This document is a reference for
 bootstrap and reviewed manual Terraform operations.
 
+> **Documentation:** [Index](../docs/README.md)
+> · [All architecture diagrams](../docs/diagrams/README.md)
+> · [Security model](../docs/security.md)
+
+## Architecture context
+
+### State and environment isolation
+
+![Terraform state and environment architecture](../docs/diagrams/terraform_state_environment_architecture.png)
+
 ## 1. Bootstrap durable artifacts
 
 The state bucket must exist before an environment can initialize its backend.
@@ -103,9 +113,9 @@ for it to succeed.
 The controlled GitHub workflow owns the initial HTTP bootstrap, DuckDNS update,
 certificate issuance, ACM import, and final HTTPS apply. Prefer that workflow.
 For a direct Terraform recovery operation, do not set `enable_https = true`
-until a real ACM certificate ARN exists. Follow the recovery section in
-[the DuckDNS and Let's Encrypt guide](../docs/duckdns-letsencrypt.md); never
-place the DuckDNS token or a private key in Terraform variables or state.
+until a real ACM certificate ARN exists. Follow the TLS lifecycle section in
+the [deployment guide](../docs/deployment-guide.md#optional-duckdns-and-tls-lifecycle);
+never place the DuckDNS token or a private key in Terraform variables or state.
 
 ## Environment isolation
 
@@ -125,3 +135,15 @@ terraform -chdir=terraform/environments/dev validate
 terraform -chdir=terraform/modules/platform init -backend=false
 terraform -chdir=terraform/modules/platform test
 ```
+
+## Current network topology
+
+The platform module creates two public subnets, two private App subnets, two
+private GPU subnets, and two dedicated private DB subnets. RDS uses only the DB
+subnets (`10.40.30.0/24` and `10.40.31.0/24` for the default `10.40.0.0/16`
+VPC). Both DB subnets share a route table containing only the implicit VPC-local
+route; App and GPU subnets retain the NAT-backed private route tables.
+
+- Source: [`network.tf`](modules/platform/network.tf),
+  [`database.tf`](modules/platform/database.tf), and
+  [`platform.tftest.hcl`](modules/platform/tests/platform.tftest.hcl)

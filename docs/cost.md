@@ -7,6 +7,16 @@ public IPv4 charges. Refresh this estimate against the
 [AWS Pricing Calculator](https://calculator.aws/) before deploying; rates and
 availability vary by region and change over time.
 
+> **Documentation:** [Index](README.md)
+> · [All architecture diagrams](diagrams/README.md)
+> · [Operations guide](operations.md)
+
+## Architecture context
+
+### Billable production topology
+
+![Main production AWS architecture](diagrams/production_aws_reference_architecture.png)
+
 ## Baseline monthly estimate
 
 Assumes 730 hours per month and low ALB traffic.
@@ -71,3 +81,13 @@ AWS positions G4dn for cost-effective machine-learning inference. See the
 
 NAT Gateways charge for both hours and processed data. See [AWS NAT Gateway
 pricing guidance](https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-pricing.html).
+
+## Implementation references
+
+- Capacity and storage defaults are defined in
+  [`variables.tf`](../terraform/modules/platform/variables.tf),
+  [`compute.tf`](../terraform/modules/platform/compute.tf), and
+  [`database.tf`](../terraform/modules/platform/database.tf).
+- The dedicated DB subnets have no NAT route, so they do not add NAT hourly or
+  data-processing charges; subnet and route-table resources have no direct
+  hourly charge.

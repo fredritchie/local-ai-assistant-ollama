@@ -69,6 +69,35 @@ jobs:
       - run: packer fmt -check -recursive packer
       - run: packer validate -syntax-only packer
 
+  documentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Validate Markdown, links, and diagram assets
+        run: python scripts/check_documentation.py --check-external
+      - name: Install pinned Draw.io renderer
+        env:
+          DRAWIO_DEB_SHA256: f4c49ed84422ea4afd95818f53c54bc666e57b33bd036d468c7096619b47ffd9
+          DRAWIO_VERSION: 31.1.8
+        run: |
+          package="drawio-amd64-${DRAWIO_VERSION}.deb"
+          curl --fail --location --silent --show-error \
+            --output "/tmp/${package}" \
+            "https://github.com/jgraph/drawio-desktop/releases/download/v${DRAWIO_VERSION}/${package}"
+          echo "${DRAWIO_DEB_SHA256}  /tmp/${package}" | sha256sum --check --strict
+          sudo apt-get update
+          sudo apt-get install --yes "/tmp/${package}" xvfb
+          drawio --version
+      - name: Verify reproducible architecture renders
+        env:
+          DRAWIO_BIN: drawio
+          DRAWIO_USE_XVFB: "1"
+        run: ./scripts/render_architecture_diagrams.sh --check
+
   security:
     runs-on: ubuntu-latest
     steps:

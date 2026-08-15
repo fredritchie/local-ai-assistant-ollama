@@ -1,5 +1,18 @@
 # Security model
 
+This guide defines the implemented trust boundaries and the remaining controls
+required before operating the platform in a stricter production environment.
+
+> **Documentation:** [Index](README.md)
+> · [All architecture diagrams](diagrams/README.md)
+> · [Operations guide](operations.md)
+
+## Architecture context
+
+### Runtime identity and configuration
+
+![Runtime configuration and IAM architecture](diagrams/runtime_configuration_iam_architecture.png)
+
 ## Network controls
 
 - Application and GPU instances are private and receive no public IPv4 address.
@@ -10,6 +23,8 @@
 - PostgreSQL RDS accepts port 5432 from the app security group and the
   dedicated VPC-scoped CodeBuild database-bootstrap security group; it has no
   public endpoint.
+- RDS uses two dedicated private database subnets and a shared database route
+  table with no NAT or internet default route.
 - No SSH ingress or bastion is created. Use Systems Manager Session Manager.
 
 The instances currently retain general outbound access through NAT because
@@ -124,3 +139,11 @@ protection, Docker's required IMDS hop limit, KMS key-policy semantics, and
 account-level logging/replication responsibilities. The configuration keeps
 these decisions visible instead of silently marking the security job as a soft
 failure.
+
+## Implementation references
+
+- Network controls: [`network.tf`](../terraform/modules/platform/network.tf),
+  [`load_balancing.tf`](../terraform/modules/platform/load_balancing.tf), and
+  [`database.tf`](../terraform/modules/platform/database.tf)
+- Identity controls: [`iam.tf`](../terraform/modules/platform/iam.tf) and
+  [`database_bootstrap.tf`](../terraform/modules/platform/database_bootstrap.tf)
