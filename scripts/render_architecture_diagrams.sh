@@ -71,7 +71,16 @@ else
   exit 1
 fi
 
-actual_version="$("${drawio_binary}" --version 2>/dev/null | tr -d '\r' | tail -n 1)"
+renderer=("${drawio_binary}")
+if [[ "${DRAWIO_USE_XVFB:-0}" == "1" ]]; then
+  if ! command -v xvfb-run >/dev/null 2>&1; then
+    echo "ERROR: DRAWIO_USE_XVFB=1 requires xvfb-run." >&2
+    exit 1
+  fi
+  renderer=(xvfb-run -a "${drawio_binary}")
+fi
+
+actual_version="$("${renderer[@]}" --version 2>/dev/null | tr -d '\r' | tail -n 1)"
 if [[ "${actual_version}" != "${EXPECTED_DRAWIO_VERSION}" ]]; then
   echo "ERROR: Draw.io ${EXPECTED_DRAWIO_VERSION} is required; found ${actual_version:-unknown}." >&2
   exit 1
@@ -90,15 +99,6 @@ if [[ "${check_mode}" == true ]]; then
   output_directory="${temporary_directory}"
 fi
 mkdir -p -- "${output_directory}"
-
-renderer=("${drawio_binary}")
-if [[ "${DRAWIO_USE_XVFB:-0}" == "1" ]]; then
-  if ! command -v xvfb-run >/dev/null 2>&1; then
-    echo "ERROR: DRAWIO_USE_XVFB=1 requires xvfb-run." >&2
-    exit 1
-  fi
-  renderer=(xvfb-run -a "${drawio_binary}")
-fi
 
 sources=()
 while IFS= read -r -d '' source_file; do
