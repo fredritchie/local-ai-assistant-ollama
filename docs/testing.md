@@ -49,7 +49,7 @@ tflint --recursive --config "$(pwd)/.tflint.hcl"
 shellcheck scripts/*.sh
 ./scripts/check_user_data.sh
 python scripts/check_documentation.py --check-external
-./scripts/render_architecture_diagrams.sh --check
+bash scripts/render_architecture_diagrams.sh --check
 packer init packer
 packer fmt -check -recursive packer
 packer validate -syntax-only packer

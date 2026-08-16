@@ -96,7 +96,7 @@ jobs:
         env:
           DRAWIO_BIN: drawio
           DRAWIO_USE_XVFB: "1"
-        run: ./scripts/render_architecture_diagrams.sh --check
+        run: bash scripts/render_architecture_diagrams.sh --check
 
   security:
     runs-on: ubuntu-latest

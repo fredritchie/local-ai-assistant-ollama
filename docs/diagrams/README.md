@@ -107,7 +107,7 @@ Draw.io `31.1.8` is the pinned renderer. After changing any editable source,
 regenerate all PNG files from the repository root:
 
 ```bash
-./scripts/render_architecture_diagrams.sh
+bash scripts/render_architecture_diagrams.sh
 ```
 
 Before committing, verify that every source has a current, same-named render
@@ -115,7 +115,7 @@ and that Markdown references and diagram XML remain valid:
 
 ```bash
 python scripts/check_documentation.py
-./scripts/render_architecture_diagrams.sh --check
+bash scripts/render_architecture_diagrams.sh --check
 ```
 
 On macOS, the rendering script detects the standard Draw.io application path.
