@@ -80,9 +80,19 @@ if [[ "${DRAWIO_USE_XVFB:-0}" == "1" ]]; then
   renderer=(xvfb-run -a "${drawio_binary}")
 fi
 
-actual_version="$("${renderer[@]}" --version 2>/dev/null | tr -d '\r' | tail -n 1)"
+version_output="$("${renderer[@]}" --version 2>&1 || true)"
+actual_version="$({
+  printf '%s\n' "${version_output}" |
+    tr -d '\r' |
+    sed -nE 's/^[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\1/p' |
+    head -n 1
+})"
 if [[ "${actual_version}" != "${EXPECTED_DRAWIO_VERSION}" ]]; then
   echo "ERROR: Draw.io ${EXPECTED_DRAWIO_VERSION} is required; found ${actual_version:-unknown}." >&2
+  if [[ -n "${version_output}" ]]; then
+    echo "Draw.io version output:" >&2
+    printf '%s\n' "${version_output}" >&2
+  fi
   exit 1
 fi
 

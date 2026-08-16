@@ -49,6 +49,8 @@ jobs:
       - run: terraform -chdir=terraform/modules/platform test
       - uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a # v6
       - run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - run: tflint --recursive --config "$(pwd)/.tflint.hcl"
 
   configuration:
@@ -91,7 +93,6 @@ jobs:
           echo "${DRAWIO_DEB_SHA256}  /tmp/${package}" | sha256sum --check --strict
           sudo apt-get update
           sudo apt-get install --yes "/tmp/${package}" xvfb
-          xvfb-run -a drawio --version
       - name: Verify reproducible architecture renders
         env:
           DRAWIO_BIN: drawio
