@@ -6,6 +6,7 @@ REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPOSITORY_ROOT
 readonly SOURCE_DIRECTORY="${REPOSITORY_ROOT}/docs/diagrams/source"
 readonly RENDER_DIRECTORY="${REPOSITORY_ROOT}/docs/diagrams"
+readonly MANIFEST_FILE="${RENDER_DIRECTORY}/source.sha256"
 
 usage() {
   cat <<'EOF'
@@ -104,6 +105,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
+sha256_digest() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echo "ERROR: sha256sum or shasum is required." >&2
+    return 1
+  fi
+}
+
+write_source_manifest() {
+  manifest_destination="$1"
+  : >"${manifest_destination}"
+  for source_file in "${sources[@]}"; do
+    diagram_name="$(basename "${source_file}")"
+    printf '%s  source/%s\n' \
+      "$(sha256_digest "${source_file}")" \
+      "${diagram_name}" >>"${manifest_destination}"
+  done
+}
+
 if [[ "${check_mode}" == true ]]; then
   temporary_directory="$(mktemp -d)"
   output_directory="${temporary_directory}"
@@ -132,19 +155,28 @@ done
 
 if [[ "${check_mode}" == true ]]; then
   status=0
+  generated_manifest="${temporary_directory}/source.sha256"
+  write_source_manifest "${generated_manifest}"
   for rendered_file in "${temporary_directory}"/*.png; do
     committed_file="${RENDER_DIRECTORY}/$(basename "${rendered_file}")"
     if [[ ! -f "${committed_file}" ]]; then
       echo "ERROR: missing committed render: ${committed_file#"${REPOSITORY_ROOT}/"}" >&2
       status=1
-    elif ! cmp -s -- "${rendered_file}" "${committed_file}"; then
-      echo "ERROR: stale render: ${committed_file#"${REPOSITORY_ROOT}/"}" >&2
-      status=1
     fi
   done
+  if [[ ! -f "${MANIFEST_FILE}" ]]; then
+    echo "ERROR: missing diagram source manifest: ${MANIFEST_FILE#"${REPOSITORY_ROOT}/"}" >&2
+    status=1
+  elif ! cmp -s -- "${generated_manifest}" "${MANIFEST_FILE}"; then
+    echo "ERROR: architecture sources changed without regenerating their PNG files." >&2
+    status=1
+  fi
   if ((status != 0)); then
-    echo "Run ./scripts/render_architecture_diagrams.sh and commit the updated PNG files." >&2
+    echo "Run bash scripts/render_architecture_diagrams.sh and commit the PNG and manifest changes." >&2
     exit "${status}"
   fi
-  echo "All committed architecture renders match their Draw.io sources."
+  echo "All architecture sources are represented by current committed renders."
+else
+  write_source_manifest "${MANIFEST_FILE}"
+  echo "Updated docs/diagrams/source.sha256."
 fi

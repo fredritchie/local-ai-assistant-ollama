@@ -110,8 +110,9 @@ regenerate all PNG files from the repository root:
 bash scripts/render_architecture_diagrams.sh
 ```
 
-Before committing, verify that every source has a current, same-named render
-and that Markdown references and diagram XML remain valid:
+Before committing, verify that every source has a current, same-named render,
+the source-digest manifest is current, and Markdown references and diagram XML
+remain valid:
 
 ```bash
 python scripts/check_documentation.py
@@ -121,7 +122,9 @@ bash scripts/render_architecture_diagrams.sh --check
 On macOS, the rendering script detects the standard Draw.io application path.
 For another installation location, set `DRAWIO_BIN` to the executable. The CI
 job installs the pinned Linux package, verifies its SHA-256 digest, and renders
-under Xvfb.
+under Xvfb. CI test-renders every source and compares the platform-independent
+[`source.sha256`](source.sha256) manifest because Draw.io PNG rasterization can
+differ between operating systems even when the Draw.io version is identical.
 
 When code and a diagram disagree, update both in the same change and treat the
 Terraform, workflow, and application files linked above as the executable
