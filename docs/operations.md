@@ -175,10 +175,11 @@ Change GPU desired capacity only after confirming:
 Use **GitHub → Actions → Controlled deployment** for normal teardown: select
 `operation=destroy`, set `confirm_destroy=DESTROY`, supply the deployed image
 digest, and approve the selected environment. The workflow temporarily disables
-production deletion protection with a targeted Terraform operation on only the
-RDS instance and two load balancers; it does not reconcile the whole
-configuration before creating its destroy plan. It also permits removal of the
-ALB log bucket. Development log objects are deleted with the
+production deletion protection through AWS APIs on only the RDS instance and
+two load balancers already recorded in Terraform state. It fails closed when
+the selected state is empty and never runs a reconciliation apply before the
+destroy plan. It also permits removal of the ALB log bucket. Development log
+objects are deleted with the
 environment. Bootstrap state and ECR resources are protected separately and
 should not be casually destroyed.
 

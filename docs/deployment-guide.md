@@ -28,9 +28,11 @@ environment secret only for the DuckDNS token.
   environment protection rules.
 - The first DuckDNS/Let's Encrypt deployment executes an explicit pre-final-plan
   mutation. Production teardown makes a deliberately **targeted** change only
-  to remove deletion protection from the database and two load balancers. These
-  exceptions are required before a final destroy plan can exist. The final
-  infrastructure plan is still saved, published, and approved before its apply.
+  through AWS APIs to remove deletion protection from the database and two load
+  balancers already recorded in state. It fails without creating anything when
+  production state is empty. These exceptions are required before a final
+  destroy plan can exist. The final infrastructure plan is still saved,
+  published, and approved before its apply.
 - Leaving `image_uri` empty builds the selected commit. Supplying
   `repository@sha256:...` reuses a previously tested immutable image.
 - After apply, the workflow runs the VPC-scoped database-bootstrap CodeBuild

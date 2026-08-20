@@ -184,17 +184,48 @@ jobs:
       - name: Prepare production for destruction
         if: inputs.operation == 'destroy' && inputs.environment == 'prod'
         working-directory: terraform/environments/prod
-        # Do not reconcile the complete configuration here: that could create
-        # unrelated resources before the destroy plan is made.
-        run: >-
-          terraform apply -input=false -auto-approve
-          -target=module.platform.aws_db_instance.chat
-          -target=module.platform.aws_lb.public
-          -target=module.platform.aws_lb.ollama
-          -var="app_image_uri=${{ steps.deployment_image.outputs.uri }}"
-          -var="enable_https=false"
-          -var="enable_deletion_protection=false"
-          -var="force_destroy_log_bucket=true"
+        run: |
+          state_json=$(terraform show -json)
+          tracked_resources=$(jq -r '[
+            .values.root_module.resources[]?,
+            .values.root_module.child_modules[]?.resources[]?
+          ] | length' <<<"$state_json")
+
+          if [[ "$tracked_resources" -eq 0 ]]; then
+            echo "Production Terraform state is empty; refusing to create resources during teardown." >&2
+            echo "Restore the correct state version before retrying destroy." >&2
+            exit 2
+          fi
+
+          resource_value() {
+            local address=$1
+            local attribute=$2
+            jq -r --arg address "$address" --arg attribute "$attribute" '[
+              .values.root_module.resources[]?,
+              .values.root_module.child_modules[]?.resources[]?
+            ] | map(select(.address == $address))[0].values[$attribute] // empty' <<<"$state_json"
+          }
+
+          database_id=$(resource_value module.platform.aws_db_instance.chat identifier)
+          if [[ -n "$database_id" ]]; then
+            aws rds modify-db-instance \
+              --db-instance-identifier "$database_id" \
+              --no-deletion-protection \
+              --apply-immediately >/dev/null
+            aws rds wait db-instance-available \
+              --db-instance-identifier "$database_id"
+          fi
+
+          for load_balancer_address in \
+            module.platform.aws_lb.public \
+            module.platform.aws_lb.ollama; do
+            load_balancer_arn=$(resource_value "$load_balancer_address" arn)
+            if [[ -n "$load_balancer_arn" ]]; then
+              aws elbv2 modify-load-balancer-attributes \
+                --load-balancer-arn "$load_balancer_arn" \
+                --attributes Key=deletion_protection.enabled,Value=false >/dev/null
+            fi
+          done
       - name: Create infrastructure plan
         working-directory: terraform/environments/${{ inputs.environment }}
         run: |
