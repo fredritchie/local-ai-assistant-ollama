@@ -19,15 +19,18 @@ environment secret only for the DuckDNS token.
 - GitHub Actions authenticates with short-lived OIDC credentials. The
   bootstrap trust policy binds the deployment role to immutable GitHub owner
   and repository IDs.
-- Protected `dev` and `prod` environments gate jobs before Terraform planning
-  and again before the dependent apply job; production should require reviewers.
+- GitHub Environments can gate jobs before Terraform planning and again before
+  the dependent apply job. Configure required reviewers on every environment
+  where a post-plan human approval is required; production should require them.
 - `operation=plan` uploads a saved binary plan and its readable `tfplan.txt`
   rendering without changing AWS. `operation=deploy` creates the same artifacts
-  and applies that saved binary plan only after the apply job is approved.
-- The first DuckDNS/Let's Encrypt deployment and production destroy preparation
-  perform explicitly approved state changes before the final plan is created;
-  the final infrastructure plan is still saved, published, and approved before
-  its apply step.
+  and applies that saved binary plan after the apply job passes any configured
+  environment protection rules.
+- The first DuckDNS/Let's Encrypt deployment executes an explicit pre-final-plan
+  mutation. Production teardown makes a deliberately **targeted** change only
+  to remove deletion protection from the database and two load balancers. These
+  exceptions are required before a final destroy plan can exist. The final
+  infrastructure plan is still saved, published, and approved before its apply.
 - Leaving `image_uri` empty builds the selected commit. Supplying
   `repository@sha256:...` reuses a previously tested immutable image.
 - After apply, the workflow runs the VPC-scoped database-bootstrap CodeBuild
@@ -199,7 +202,8 @@ In **GitHub → Actions → Controlled deployment**, run:
 2. `environment=dev`, `operation=deploy`; leave `image_uri` blank to build the
    selected commit, or provide a previously built immutable ECR
    `repository@sha256:...` reference. Review the deploy run's newly published
-   `tfplan.txt`, then approve the apply job when GitHub requests it.
+   `tfplan.txt`; GitHub pauses the apply job only if `dev` has required reviewers
+   configured.
 
 The deployment creates the development VPC, ALB, app and GPU Auto Scaling
 groups, two dedicated database subnets, RDS, monitoring, and a VPC-scoped CodeBuild job. That CodeBuild job

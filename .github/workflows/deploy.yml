@@ -184,9 +184,15 @@ jobs:
       - name: Prepare production for destruction
         if: inputs.operation == 'destroy' && inputs.environment == 'prod'
         working-directory: terraform/environments/prod
+        # Do not reconcile the complete configuration here: that could create
+        # unrelated resources before the destroy plan is made.
         run: >-
           terraform apply -input=false -auto-approve
+          -target=module.platform.aws_db_instance.chat
+          -target=module.platform.aws_lb.public
+          -target=module.platform.aws_lb.ollama
           -var="app_image_uri=${{ steps.deployment_image.outputs.uri }}"
+          -var="enable_https=false"
           -var="enable_deletion_protection=false"
           -var="force_destroy_log_bucket=true"
       - name: Create infrastructure plan
@@ -202,6 +208,7 @@ jobs:
             plan_args+=( -destroy )
             if [[ "${{ inputs.environment }}" == "prod" ]]; then
               plan_args+=(
+                -var="enable_https=false"
                 -var="enable_deletion_protection=false"
                 -var="force_destroy_log_bucket=true"
               )
