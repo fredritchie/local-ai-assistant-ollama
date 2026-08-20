@@ -19,10 +19,15 @@ environment secret only for the DuckDNS token.
 - GitHub Actions authenticates with short-lived OIDC credentials. The
   bootstrap trust policy binds the deployment role to immutable GitHub owner
   and repository IDs.
-- Protected `dev` and `prod` environments gate jobs before Terraform planning;
-  production should require reviewers.
-- `operation=plan` uploads a reviewable saved plan without changing AWS.
-  `operation=deploy` creates and applies a plan in the approved environment.
+- Protected `dev` and `prod` environments gate jobs before Terraform planning
+  and again before the dependent apply job; production should require reviewers.
+- `operation=plan` uploads a saved binary plan and its readable `tfplan.txt`
+  rendering without changing AWS. `operation=deploy` creates the same artifacts
+  and applies that saved binary plan only after the apply job is approved.
+- The first DuckDNS/Let's Encrypt deployment and production destroy preparation
+  perform explicitly approved state changes before the final plan is created;
+  the final infrastructure plan is still saved, published, and approved before
+  its apply step.
 - Leaving `image_uri` empty builds the selected commit. Supplying
   `repository@sha256:...` reuses a previously tested immutable image.
 - After apply, the workflow runs the VPC-scoped database-bootstrap CodeBuild
@@ -190,10 +195,11 @@ and settings and therefore must be regenerated for every fork.
 
 In **GitHub → Actions → Controlled deployment**, run:
 
-1. `environment=dev`, `operation=plan`; review the plan artifact.
+1. `environment=dev`, `operation=plan`; review `tfplan.txt` in the plan artifact.
 2. `environment=dev`, `operation=deploy`; leave `image_uri` blank to build the
    selected commit, or provide a previously built immutable ECR
-   `repository@sha256:...` reference.
+   `repository@sha256:...` reference. Review the deploy run's newly published
+   `tfplan.txt`, then approve the apply job when GitHub requests it.
 
 The deployment creates the development VPC, ALB, app and GPU Auto Scaling
 groups, two dedicated database subnets, RDS, monitoring, and a VPC-scoped CodeBuild job. That CodeBuild job
@@ -242,9 +248,9 @@ or `rds:DescribeDBInstances` access to the application role.
 
 Copy the successful development image's immutable `repository@sha256:...`
 reference from the workflow log. Run a production `plan`, then a production
-`deploy` with that digest in `image_uri`; approve the protected `prod`
-environment when GitHub requests it. Do not promote a mutable tag such as
-`latest`.
+`deploy` with that digest in `image_uri`; review the deploy run's `tfplan.txt`
+artifact and approve the protected `prod` apply job when GitHub requests it.
+Do not promote a mutable tag such as `latest`.
 
 With the default production operator settings, the first production deployment
 creates the DuckDNS/Let's Encrypt HTTPS path. Confirm the certificate, DNS,

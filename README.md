@@ -144,7 +144,8 @@ as local or emergency overrides.
 CI runs automatically. Deployment is intentionally manual unless the optional
 GitHub OIDC role and protected `dev`/`prod` environments are configured. The
 deployment workflow builds an image, records its digest, creates a Terraform
-plan, uploads the plan artifact, and applies only when explicitly requested.
+plan, publishes both the saved plan and a readable rendering, then applies that
+same saved plan only after the apply job is approved.
 
 For workflow controls, setup, deployment, immutable promotion, HTTPS,
 alerting, rollback, and teardown, use the
