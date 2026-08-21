@@ -1,160 +1,937 @@
-name: Controlled deployment
+name: Controlled deployment v2
+
+run-name: >-
+  ${{ inputs.operation }} ${{ inputs.environment }}
+  @ ${{ github.ref_name }} by ${{ github.actor }}
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Environment to operate on
+        description: Target Terraform environment
         required: true
         type: choice
-        options: [dev, prod]
+        options:
+          - dev
+          - prod
+        default: dev
       operation:
-        description: Plan, deploy, or destroy the selected environment
+        description: Operation to perform
         required: true
         type: choice
-        options: [plan, deploy, destroy]
+        options:
+          - plan
+          - drift-check
+          - deploy
+          - bootstrap-certificate
+          - prepare-destroy
+          - destroy
         default: plan
-      confirm_destroy:
-        description: Type DESTROY to permit a destroy operation
+      image_source:
+        description: auto builds for a dev deploy; other operations reuse the newest ECR digest unless provided
+        required: true
+        type: choice
+        options:
+          - auto
+          - build
+          - latest
+          - provided
+        default: auto
+      image_uri:
+        description: Digest-pinned ECR URI; required when image_source=provided
         required: false
         type: string
-      image_uri:
-        description: Existing ECR digest to promote; leave empty to build this commit
+      plan_environment:
+        description: Optional plan-only GitHub environment; it must also be allowed by the deployment role OIDC trust
+        required: false
+        type: string
+      allow_prod_http:
+        description: Break-glass production HTTP deploy; requires confirmation ALLOW HTTP prod
+        required: true
+        type: boolean
+        default: false
+      run_db_bootstrap:
+        description: Run the idempotent PostgreSQL IAM-user bootstrap after deploy
+        required: true
+        type: boolean
+        default: true
+      run_smoke_tests:
+        description: Wait for health and run application smoke tests after deploy
+        required: true
+        type: boolean
+        default: true
+      confirmation:
+        description: Enter BOOTSTRAP prod, ALLOW HTTP prod, PREPARE DESTROY prod, or DESTROY <environment> when required
         required: false
         type: string
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
-  group: deploy-${{ inputs.environment }}
+  group: controlled-deployment-${{ inputs.environment }}
   cancel-in-progress: false
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  plan:
+  preflight:
+    name: Preflight and configuration
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
     outputs:
-      plan_artifact_name: ${{ steps.plan_metadata.outputs.artifact_name }}
+      plan_environment: ${{ steps.validate.outputs.plan_environment }}
+      aws_region: ${{ steps.config.outputs.AWS_REGION }}
+      aws_deploy_role_arn: ${{ steps.config.outputs.AWS_DEPLOY_ROLE_ARN }}
+      ecr_repository_url: ${{ steps.config.outputs.ECR_REPOSITORY_URL }}
+      tf_state_bucket: ${{ steps.config.outputs.TF_STATE_BUCKET }}
+      tf_state_kms_key_id: ${{ steps.config.outputs.TF_STATE_KMS_KEY_ID }}
+      alarm_email: ${{ steps.config.outputs.ALARM_EMAIL }}
+      acm_certificate_arn: ${{ steps.config.outputs.ACM_CERTIFICATE_ARN }}
+      enable_duckdns: ${{ steps.config.outputs.ENABLE_DUCKDNS }}
+      enable_letsencrypt: ${{ steps.config.outputs.ENABLE_LETSENCRYPT }}
+      duckdns_subdomain: ${{ steps.config.outputs.DUCKDNS_SUBDOMAIN }}
+      letsencrypt_email: ${{ steps.config.outputs.LETSENCRYPT_EMAIL }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Load non-secret environment configuration
+      - name: Checkout requested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Load and validate non-secret configuration
         id: config
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          config_file=".github/deployment-config/${{ inputs.environment }}.env"
+          set -Eeuo pipefail
+
+          config_file=".github/deployment-config/${TARGET_ENVIRONMENT}.env"
           if [[ ! -f "$config_file" ]]; then
-            echo "Missing $config_file; copy and configure its .example file" >&2
+            echo "Missing $config_file" >&2
             exit 2
           fi
-          while IFS= read -r line || [[ -n "$line" ]]; do
-            [[ -z "$line" || "$line" == \#* ]] && continue
-            if [[ ! "$line" =~ ^[A-Z][A-Z0-9_]*= ]]; then
-              echo "Invalid configuration line in $config_file" >&2
+
+          declare -A allowed=(
+            [AWS_REGION]=1
+            [AWS_DEPLOY_ROLE_ARN]=1
+            [ECR_REPOSITORY_URL]=1
+            [TF_STATE_BUCKET]=1
+            [TF_STATE_KMS_KEY_ID]=1
+            [ALARM_EMAIL]=1
+            [ACM_CERTIFICATE_ARN]=1
+            [ENABLE_DUCKDNS]=1
+            [ENABLE_LETSENCRYPT]=1
+            [DUCKDNS_SUBDOMAIN]=1
+            [LETSENCRYPT_EMAIL]=1
+          )
+          declare -A config=()
+
+          while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+            raw_line=${raw_line%$'\r'}
+            [[ -z "$raw_line" || "$raw_line" == \#* ]] && continue
+
+            if [[ ! "$raw_line" =~ ^[A-Z][A-Z0-9_]*= ]]; then
+              echo "Invalid configuration line in $config_file: $raw_line" >&2
               exit 2
             fi
-            echo "$line" >>"$GITHUB_ENV"
-            echo "$line" >>"$GITHUB_OUTPUT"
+
+            key=${raw_line%%=*}
+            value=${raw_line#*=}
+            if [[ -z "${allowed[$key]:-}" ]]; then
+              echo "Unsupported key $key in $config_file" >&2
+              exit 2
+            fi
+            if [[ -n "${config[$key]+x}" ]]; then
+              echo "Duplicate key $key in $config_file" >&2
+              exit 2
+            fi
+            config[$key]=$value
           done <"$config_file"
-      - name: Export optional domain settings
-        run: |
-          if [[ -n "$ACM_CERTIFICATE_ARN" ]]; then
-            echo "TF_VAR_certificate_arn=$ACM_CERTIFICATE_ARN" >>"$GITHUB_ENV"
-          fi
-          if [[ -n "$ALARM_EMAIL" ]]; then
-            echo "TF_VAR_alarm_email=$ALARM_EMAIL" >>"$GITHUB_ENV"
-          fi
-          if [[ -n "$ENABLE_DUCKDNS" ]]; then
-            [[ "$ENABLE_DUCKDNS" =~ ^(true|false)$ ]]
-            echo "TF_VAR_enable_duckdns=$ENABLE_DUCKDNS" >>"$GITHUB_ENV"
-          fi
-          if [[ -n "$ENABLE_LETSENCRYPT" ]]; then
-            [[ "$ENABLE_LETSENCRYPT" =~ ^(true|false)$ ]]
-            echo "LETSENCRYPT_ENABLED=$ENABLE_LETSENCRYPT" >>"$GITHUB_ENV"
-          fi
-          if [[ -n "$DUCKDNS_SUBDOMAIN" ]]; then
-            echo "TF_VAR_duckdns_subdomain=$DUCKDNS_SUBDOMAIN" >>"$GITHUB_ENV"
-          fi
-          if [[ -n "$LETSENCRYPT_EMAIL" ]]; then
-            echo "LETSENCRYPT_EMAIL=$LETSENCRYPT_EMAIL" >>"$GITHUB_ENV"
-          fi
-          if [[ "$ENABLE_LETSENCRYPT" == "true" ]]; then
-            if [[ "$ENABLE_DUCKDNS" != "true" || -z "$DUCKDNS_SUBDOMAIN" || -z "$LETSENCRYPT_EMAIL" ]]; then
-              echo "Let's Encrypt requires ENABLE_DUCKDNS=true, DUCKDNS_SUBDOMAIN, and LETSENCRYPT_EMAIL" >&2
+
+          config[AWS_REGION]=${config[AWS_REGION]:-ap-south-1}
+          config[ENABLE_DUCKDNS]=${config[ENABLE_DUCKDNS]:-false}
+          config[ENABLE_LETSENCRYPT]=${config[ENABLE_LETSENCRYPT]:-false}
+
+          required=(
+            AWS_DEPLOY_ROLE_ARN
+            ECR_REPOSITORY_URL
+            TF_STATE_BUCKET
+            TF_STATE_KMS_KEY_ID
+          )
+          for key in "${required[@]}"; do
+            if [[ -z "${config[$key]:-}" ]]; then
+              echo "$key is required in $config_file" >&2
               exit 2
             fi
+          done
+
+          for key in ENABLE_DUCKDNS ENABLE_LETSENCRYPT; do
+            if [[ ! "${config[$key]}" =~ ^(true|false)$ ]]; then
+              echo "$key must be true or false" >&2
+              exit 2
+            fi
+          done
+
+          if [[ ! "${config[AWS_DEPLOY_ROLE_ARN]}" =~ ^arn:aws:iam::[0-9]{12}:role/.+ ]]; then
+            echo "AWS_DEPLOY_ROLE_ARN is not a valid IAM role ARN" >&2
+            exit 2
           fi
-      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
-        with:
-          role-to-assume: ${{ steps.config.outputs.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ap-south-1
-      - name: Resolve managed Let's Encrypt certificate
-        if: inputs.environment == 'prod' && env.LETSENCRYPT_ENABLED == 'true'
+          if [[ ! "${config[ECR_REPOSITORY_URL]}" =~ ^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-zA-Z0-9._/-]+$ ]]; then
+            echo "ECR_REPOSITORY_URL is not a valid ECR repository URL" >&2
+            exit 2
+          fi
+
+          output_keys=(
+            AWS_REGION
+            AWS_DEPLOY_ROLE_ARN
+            ECR_REPOSITORY_URL
+            TF_STATE_BUCKET
+            TF_STATE_KMS_KEY_ID
+            ALARM_EMAIL
+            ACM_CERTIFICATE_ARN
+            ENABLE_DUCKDNS
+            ENABLE_LETSENCRYPT
+            DUCKDNS_SUBDOMAIN
+            LETSENCRYPT_EMAIL
+          )
+          for key in "${output_keys[@]}"; do
+            printf '%s=%s\n' "$key" "${config[$key]:-}" >>"$GITHUB_OUTPUT"
+          done
+
+      - name: Validate requested operation
+        id: validate
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          OPERATION: ${{ inputs.operation }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
+          IMAGE_URI: ${{ inputs.image_uri }}
+          PLAN_ENVIRONMENT: ${{ inputs.plan_environment }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          ALLOW_PROD_HTTP: ${{ inputs.allow_prod_http }}
+          ENABLE_DUCKDNS: ${{ steps.config.outputs.ENABLE_DUCKDNS }}
+          ENABLE_LETSENCRYPT: ${{ steps.config.outputs.ENABLE_LETSENCRYPT }}
+          DUCKDNS_SUBDOMAIN: ${{ steps.config.outputs.DUCKDNS_SUBDOMAIN }}
+          LETSENCRYPT_EMAIL: ${{ steps.config.outputs.LETSENCRYPT_EMAIL }}
+          GIT_REF: ${{ github.ref }}
         run: |
-          certificate_arn=$(aws ssm get-parameter \
-            --name /local-ai-assistant/prod/letsencrypt/acm_certificate_arn \
-            --query Parameter.Value --output text 2>/dev/null || true)
-          if [[ -n "$certificate_arn" && "$certificate_arn" != "None" ]]; then
-            echo "TF_VAR_certificate_arn=$certificate_arn" >>"$GITHUB_ENV"
-            echo "TF_VAR_enable_https=true" >>"$GITHUB_ENV"
-            echo "LETSENCRYPT_CERTIFICATE_ARN=$certificate_arn" >>"$GITHUB_ENV"
-          else
-            # The first deploy creates the certificate after an HTTP bootstrap.
-            echo "TF_VAR_enable_https=false" >>"$GITHUB_ENV"
+          set -Eeuo pipefail
+
+          effective_plan_environment=${PLAN_ENVIRONMENT:-$TARGET_ENVIRONMENT}
+          if [[ "$effective_plan_environment" != "$TARGET_ENVIRONMENT" && "$effective_plan_environment" != "${TARGET_ENVIRONMENT}-plan" ]]; then
+            echo "plan_environment must be blank, $TARGET_ENVIRONMENT, or ${TARGET_ENVIRONMENT}-plan" >&2
+            exit 2
           fi
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+          echo "plan_environment=$effective_plan_environment" >>"$GITHUB_OUTPUT"
+
+          if [[ "$IMAGE_SOURCE" == "provided" && -z "$IMAGE_URI" ]]; then
+            echo "image_uri is required when image_source=provided" >&2
+            exit 2
+          fi
+          if [[ "$IMAGE_SOURCE" != "provided" && -n "$IMAGE_URI" ]]; then
+            echo "image_uri is only accepted when image_source=provided" >&2
+            exit 2
+          fi
+          if [[ "$IMAGE_SOURCE" == "build" && "$OPERATION" =~ ^(prepare-destroy|destroy)$ ]]; then
+            echo "Building a new image is not allowed for a teardown operation" >&2
+            exit 2
+          fi
+
+          # Production releases must promote a digest that was already validated in dev.
+          if [[ "$TARGET_ENVIRONMENT" == "prod" && "$OPERATION" =~ ^(deploy|bootstrap-certificate)$ && "$IMAGE_SOURCE" != "provided" ]]; then
+            echo "Production $OPERATION requires image_source=provided and a reviewed dev ECR digest" >&2
+            exit 2
+          fi
+
+          if [[ "$TARGET_ENVIRONMENT" == "prod" && "$OPERATION" == "deploy" && "$ALLOW_PROD_HTTP" == "true" && "$CONFIRMATION" != "ALLOW HTTP prod" ]]; then
+            echo "A break-glass HTTP production deploy requires confirmation: ALLOW HTTP prod" >&2
+            exit 2
+          fi
+
+          if [[ "$TARGET_ENVIRONMENT" == "prod" && "$GIT_REF" != "refs/heads/main" ]]; then
+            echo "All production operations are allowed only from refs/heads/main" >&2
+            exit 2
+          fi
+
+          case "$OPERATION" in
+            bootstrap-certificate)
+              if [[ "$TARGET_ENVIRONMENT" != "prod" ]]; then
+                echo "bootstrap-certificate is supported only for prod" >&2
+                exit 2
+              fi
+              if [[ "$CONFIRMATION" != "BOOTSTRAP prod" ]]; then
+                echo "bootstrap-certificate requires confirmation: BOOTSTRAP prod" >&2
+                exit 2
+              fi
+              if [[ "$ENABLE_DUCKDNS" != "true" || "$ENABLE_LETSENCRYPT" != "true" || -z "$DUCKDNS_SUBDOMAIN" || -z "$LETSENCRYPT_EMAIL" ]]; then
+                echo "Certificate bootstrap requires ENABLE_DUCKDNS=true, ENABLE_LETSENCRYPT=true, DUCKDNS_SUBDOMAIN, and LETSENCRYPT_EMAIL" >&2
+                exit 2
+              fi
+              ;;
+            prepare-destroy)
+              if [[ "$TARGET_ENVIRONMENT" != "prod" ]]; then
+                echo "prepare-destroy is only required for prod" >&2
+                exit 2
+              fi
+              if [[ "$CONFIRMATION" != "PREPARE DESTROY prod" ]]; then
+                echo "prepare-destroy requires confirmation: PREPARE DESTROY prod" >&2
+                exit 2
+              fi
+              ;;
+            destroy)
+              if [[ "$CONFIRMATION" != "DESTROY $TARGET_ENVIRONMENT" ]]; then
+                echo "destroy requires confirmation: DESTROY $TARGET_ENVIRONMENT" >&2
+                exit 2
+              fi
+              ;;
+          esac
+
+          cat >>"$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Controlled deployment request
+
+          | Field | Value |
+          |---|---|
+          | Environment | \`$TARGET_ENVIRONMENT\` |
+          | Operation | \`$OPERATION\` |
+          | Git ref | \`$GIT_REF\` |
+          | Plan environment | \`$effective_plan_environment\` |
+          | Image source | \`$IMAGE_SOURCE\` |
+          SUMMARY
+
+  plan:
+    name: Resolve image and create reviewed plan
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: ${{ needs.preflight.outputs.plan_environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ needs.preflight.outputs.aws_region }}
+      AWS_DEFAULT_REGION: ${{ needs.preflight.outputs.aws_region }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_WORK_DIR: terraform/environments/${{ inputs.environment }}
+      ECR_REPOSITORY_URL: ${{ needs.preflight.outputs.ecr_repository_url }}
+      TF_STATE_BUCKET: ${{ needs.preflight.outputs.tf_state_bucket }}
+      TF_STATE_KMS_KEY_ID: ${{ needs.preflight.outputs.tf_state_kms_key_id }}
+      ALARM_EMAIL: ${{ needs.preflight.outputs.alarm_email }}
+      ACM_CERTIFICATE_ARN: ${{ needs.preflight.outputs.acm_certificate_arn }}
+      ENABLE_DUCKDNS: ${{ needs.preflight.outputs.enable_duckdns }}
+      ENABLE_LETSENCRYPT: ${{ needs.preflight.outputs.enable_letsencrypt }}
+      DUCKDNS_SUBDOMAIN: ${{ needs.preflight.outputs.duckdns_subdomain }}
+      LETSENCRYPT_EMAIL: ${{ needs.preflight.outputs.letsencrypt_email }}
+    outputs:
+      artifact_name: ${{ steps.plan_metadata.outputs.artifact_name }}
+      image_uri: ${{ steps.image.outputs.uri }}
+      has_changes: ${{ steps.terraform_plan.outputs.has_changes }}
+      certificate_arn: ${{ steps.certificate.outputs.certificate_arn }}
+      enable_https: ${{ steps.certificate.outputs.enable_https }}
+      tfplan_sha256: ${{ steps.render.outputs.tfplan_sha256 }}
+    steps:
+      - name: Checkout requested revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        with:
+          role-to-assume: ${{ needs.preflight.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ needs.preflight.outputs.aws_region }}
+          role-session-name: gha-plan-${{ github.run_id }}
+          mask-aws-account-id: true
+
+      - name: Verify AWS account and assumed role
+        env:
+          EXPECTED_ROLE_ARN: ${{ needs.preflight.outputs.aws_deploy_role_arn }}
+        run: |
+          set -Eeuo pipefail
+          expected_account=$(cut -d: -f5 <<<"$EXPECTED_ROLE_ARN")
+          actual_account=$(aws sts get-caller-identity --query Account --output text)
+          actual_arn=$(aws sts get-caller-identity --query Arn --output text)
+          if [[ "$actual_account" != "$expected_account" ]]; then
+            echo "AWS account mismatch: expected $expected_account, received $actual_account" >&2
+            exit 2
+          fi
+          echo "Authenticated to AWS account $actual_account as $actual_arn"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
         with:
           terraform_version: "~1.14.0"
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - name: Require explicit destroy confirmation
-        if: inputs.operation == 'destroy' && inputs.confirm_destroy != 'DESTROY'
-        run: |
-          echo "Destroy operations require confirm_destroy=DESTROY" >&2
-          exit 1
-      - name: Build and publish immutable image
-        if: inputs.operation != 'destroy' && inputs.image_uri == ''
+
+      - name: Set up Docker Buildx
+        if: >-
+          ${{ inputs.image_source == 'build' ||
+              (inputs.image_source == 'auto' &&
+               (inputs.operation == 'deploy' || inputs.operation == 'bootstrap-certificate')) }}
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Resolve immutable application image
         id: image
-        run: |
-          image_uri=$(./scripts/build_and_push.sh "$ECR_REPOSITORY_URL")
-          echo "uri=$image_uri" >>"$GITHUB_OUTPUT"
-      - name: Resolve deployment image
-        id: deployment_image
         env:
+          OPERATION: ${{ inputs.operation }}
+          IMAGE_SOURCE: ${{ inputs.image_source }}
           PROVIDED_IMAGE_URI: ${{ inputs.image_uri }}
-          BUILT_IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
-          image_uri=${PROVIDED_IMAGE_URI:-$BUILT_IMAGE_URI}
-          if [[ ! "$image_uri" =~ ^[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/.+@sha256:[0-9a-f]{64}$ ]]; then
-            echo "A digest-pinned ECR image URI is required" >&2
-            exit 1
+          set -Eeuo pipefail
+
+          validate_uri() {
+            local uri=$1
+            local digest=${uri##*@}
+            if [[ "$uri" != "${ECR_REPOSITORY_URL}@"* || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Image must be a digest-pinned image from $ECR_REPOSITORY_URL" >&2
+              exit 2
+            fi
+          }
+
+          source=$IMAGE_SOURCE
+          if [[ "$source" == "auto" ]]; then
+            case "$OPERATION" in
+              deploy|bootstrap-certificate) source=build ;;
+              *) source=latest ;;
+            esac
           fi
+
+          case "$source" in
+            provided)
+              image_uri=$PROVIDED_IMAGE_URI
+              ;;
+            build)
+              repository_name=${ECR_REPOSITORY_URL#*/}
+              image_tag="sha-${GITHUB_SHA}"
+              existing_digest=$(aws ecr describe-images \
+                --repository-name "$repository_name" \
+                --image-ids "imageTag=$image_tag" \
+                --query 'imageDetails[0].imageDigest' \
+                --output text 2>/dev/null || true)
+              if [[ "$existing_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                image_uri="${ECR_REPOSITORY_URL}@${existing_digest}"
+                echo "Reusing the immutable image already built for $GITHUB_SHA."
+              else
+                image_uri=$(./scripts/build_and_push.sh "$ECR_REPOSITORY_URL")
+              fi
+              ;;
+            latest)
+              repository_name=${ECR_REPOSITORY_URL#*/}
+              digest=$(aws ecr describe-images \
+                --repository-name "$repository_name" \
+                --filter tagStatus=TAGGED \
+                --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageDigest' \
+                --output text 2>/dev/null || true)
+
+              if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                if [[ "$OPERATION" =~ ^(prepare-destroy|destroy)$ ]]; then
+                  digest="sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                  echo "No ECR image was found; using a non-deployable placeholder for teardown planning."
+                else
+                  echo "No digest-pinned image exists in ECR. Choose image_source=build or provided." >&2
+                  exit 2
+                fi
+              fi
+              image_uri="${ECR_REPOSITORY_URL}@${digest}"
+              ;;
+            *)
+              echo "Unsupported image source: $source" >&2
+              exit 2
+              ;;
+          esac
+
+          validate_uri "$image_uri"
+          digest=${image_uri##*@}
+          repository_name=${ECR_REPOSITORY_URL#*/}
+          if [[ "$digest" != "sha256:0000000000000000000000000000000000000000000000000000000000000000" ]]; then
+            if ! aws ecr describe-images \
+              --repository-name "$repository_name" \
+              --image-ids "imageDigest=$digest" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text >/dev/null; then
+              echo "The resolved digest does not exist in $ECR_REPOSITORY_URL: $digest" >&2
+              exit 2
+            fi
+          fi
+
           echo "uri=$image_uri" >>"$GITHUB_OUTPUT"
+          echo "source=$source" >>"$GITHUB_OUTPUT"
+          echo "Resolved application image: $image_uri"
+
       - name: Initialize remote state
-        working-directory: terraform/environments/${{ inputs.environment }}
         run: |
-          terraform init -input=false \
+          set -Eeuo pipefail
+          terraform -chdir="$TF_WORK_DIR" init \
+            -input=false \
+            -lockfile=readonly \
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="kms_key_id=$TF_STATE_KMS_KEY_ID"
-      - name: Issue first Let's Encrypt certificate
-        if: inputs.operation == 'deploy' && inputs.environment == 'prod' && env.LETSENCRYPT_ENABLED == 'true' && env.LETSENCRYPT_CERTIFICATE_ARN == ''
+          terraform -chdir="$TF_WORK_DIR" validate -no-color
+
+      - name: Resolve and validate HTTPS certificate
+        id: certificate
+        env:
+          OPERATION: ${{ inputs.operation }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          ALLOW_PROD_HTTP: ${{ inputs.allow_prod_http }}
+        run: |
+          set -Eeuo pipefail
+
+          enable_https=false
+          certificate_arn=""
+          certificate_source=none
+          expected_domain=""
+
+          if [[ "$ENABLE_DUCKDNS" == "true" && -n "$DUCKDNS_SUBDOMAIN" ]]; then
+            expected_domain="${DUCKDNS_SUBDOMAIN}.duckdns.org"
+          fi
+
+          candidate=$ACM_CERTIFICATE_ARN
+          if [[ -n "$candidate" ]]; then
+            certificate_source=config
+          elif [[ "$TARGET_ENVIRONMENT" == "prod" && "$ENABLE_LETSENCRYPT" == "true" ]]; then
+            candidate=$(aws ssm get-parameter \
+              --name /local-ai-assistant/prod/letsencrypt/acm_certificate_arn \
+              --query Parameter.Value \
+              --output text 2>/dev/null || true)
+            [[ "$candidate" == "None" ]] && candidate=""
+            [[ -n "$candidate" ]] && certificate_source=ssm
+          fi
+
+          valid_certificate=false
+          if [[ -n "$candidate" ]]; then
+            certificate_json=$(aws acm describe-certificate \
+              --certificate-arn "$candidate" \
+              --query 'Certificate.{Arn:CertificateArn,Domain:DomainName,Status:Status,NotAfter:NotAfter,Type:Type,InUseBy:InUseBy}' \
+              --output json 2>/dev/null || true)
+
+            if [[ -n "$certificate_json" ]]; then
+              status=$(jq -r '.Status // empty' <<<"$certificate_json")
+              domain=$(jq -r '.Domain // empty' <<<"$certificate_json")
+              not_after=$(jq -r '.NotAfter // empty' <<<"$certificate_json")
+
+              if [[ "$status" == "ISSUED" && ( -z "$expected_domain" || "$domain" == "$expected_domain" ) ]]; then
+                valid_certificate=true
+                certificate_arn=$candidate
+                enable_https=true
+
+                if [[ -n "$not_after" ]]; then
+                  expiry_epoch=$(date --date="$not_after" +%s)
+                  now_epoch=$(date +%s)
+                  remaining_days=$(( (expiry_epoch - now_epoch) / 86400 ))
+                  echo "Certificate expires in approximately ${remaining_days} days."
+                  if (( remaining_days < 14 )); then
+                    echo "::warning::The ACM certificate expires in fewer than 14 days. Run the certificate-renewal workflow."
+                  fi
+                fi
+              else
+                echo "::warning::Certificate is unusable: ARN=$candidate status=$status domain=$domain expected_domain=${expected_domain:-any}"
+              fi
+            else
+              echo "::warning::The configured SSM/config certificate ARN does not exist in ACM: $candidate"
+            fi
+          fi
+
+          case "$OPERATION" in
+            bootstrap-certificate)
+              if [[ "$valid_certificate" == "true" ]]; then
+                echo "A valid certificate already exists. Use the renewal workflow instead of bootstrap-certificate." >&2
+                exit 2
+              fi
+              enable_https=false
+              certificate_arn=""
+              ;;
+            prepare-destroy|destroy)
+              # Teardown plans must not depend on an external certificate.
+              enable_https=false
+              certificate_arn=""
+              ;;
+            *)
+              if [[ "$TARGET_ENVIRONMENT" == "prod" && "$enable_https" != "true" && "$ALLOW_PROD_HTTP" != "true" ]]; then
+                echo "Production HTTPS is not ready. Run bootstrap-certificate, repair the ACM/SSM reference, or explicitly set allow_prod_http=true." >&2
+                exit 2
+              fi
+              ;;
+          esac
+
+          echo "enable_https=$enable_https" >>"$GITHUB_OUTPUT"
+          echo "certificate_arn=$certificate_arn" >>"$GITHUB_OUTPUT"
+          echo "certificate_source=$certificate_source" >>"$GITHUB_OUTPUT"
+          echo "expected_domain=$expected_domain" >>"$GITHUB_OUTPUT"
+
+      - name: Write pipeline Terraform variables
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          OPERATION: ${{ inputs.operation }}
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          ENABLE_HTTPS: ${{ steps.certificate.outputs.enable_https }}
+          CERTIFICATE_ARN: ${{ steps.certificate.outputs.certificate_arn }}
+        run: |
+          set -Eeuo pipefail
+
+          jq -n \
+            --arg app_image_uri "$IMAGE_URI" \
+            --arg alarm_email "$ALARM_EMAIL" \
+            --arg enable_duckdns "$ENABLE_DUCKDNS" \
+            --arg duckdns_subdomain "$DUCKDNS_SUBDOMAIN" \
+            --arg enable_https "$ENABLE_HTTPS" \
+            --arg certificate_arn "$CERTIFICATE_ARN" \
+            '{
+              app_image_uri: $app_image_uri,
+              alarm_email: (if $alarm_email == "" then null else $alarm_email end),
+              enable_duckdns: ($enable_duckdns == "true"),
+              duckdns_subdomain: (if $duckdns_subdomain == "" then null else $duckdns_subdomain end),
+              enable_https: ($enable_https == "true"),
+              certificate_arn: (if $certificate_arn == "" then null else $certificate_arn end)
+            }' >"$TF_WORK_DIR/pipeline.auto.tfvars.json"
+
+          if [[ "$TARGET_ENVIRONMENT" == "prod" ]]; then
+            if [[ "$OPERATION" =~ ^(prepare-destroy|destroy)$ ]]; then
+              jq '. + {
+                enable_deletion_protection: false,
+                force_destroy_log_bucket: true
+              }' "$TF_WORK_DIR/pipeline.auto.tfvars.json" \
+                >"$TF_WORK_DIR/pipeline.auto.tfvars.json.tmp"
+            else
+              jq '. + {
+                enable_deletion_protection: true,
+                force_destroy_log_bucket: false
+              }' "$TF_WORK_DIR/pipeline.auto.tfvars.json" \
+                >"$TF_WORK_DIR/pipeline.auto.tfvars.json.tmp"
+            fi
+            mv "$TF_WORK_DIR/pipeline.auto.tfvars.json.tmp" \
+              "$TF_WORK_DIR/pipeline.auto.tfvars.json"
+          fi
+
+          jq empty "$TF_WORK_DIR/pipeline.auto.tfvars.json"
+
+      - name: Verify production is prepared for destruction
+        if: ${{ inputs.operation == 'destroy' && inputs.environment == 'prod' }}
+        run: |
+          set -Eeuo pipefail
+
+          assert_state_value() {
+            local address=$1
+            local pattern=$2
+            local state
+            state=$(terraform -chdir="$TF_WORK_DIR" state show -no-color "$address" 2>/dev/null || true)
+            [[ -z "$state" ]] && return 0
+            if ! grep -Eq "$pattern" <<<"$state"; then
+              echo "$address is not prepared for destruction; expected pattern: $pattern" >&2
+              echo "Run operation=prepare-destroy first." >&2
+              exit 2
+            fi
+          }
+
+          assert_state_value module.platform.aws_db_instance.chat 'deletion_protection[[:space:]]*=[[:space:]]*false'
+          assert_state_value module.platform.aws_lb.public 'enable_deletion_protection[[:space:]]*=[[:space:]]*false'
+          assert_state_value module.platform.aws_lb.ollama 'enable_deletion_protection[[:space:]]*=[[:space:]]*false'
+          assert_state_value module.platform.aws_s3_bucket.alb_logs 'force_destroy[[:space:]]*=[[:space:]]*true'
+
+      - name: Create Terraform plan
+        id: terraform_plan
+        env:
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          set -Eeuo pipefail
+
+          plan_args=(
+            -input=false
+            -lock-timeout=5m
+            -no-color
+            -out=tfplan
+            -detailed-exitcode
+          )
+
+          case "$OPERATION" in
+            drift-check)
+              plan_args+=( -refresh-only )
+              ;;
+            prepare-destroy)
+              plan_args+=(
+                -target=module.platform.aws_db_instance.chat
+                -target=module.platform.aws_lb.public
+                -target=module.platform.aws_lb.ollama
+                -target=module.platform.aws_s3_bucket.alb_logs
+              )
+              ;;
+            destroy)
+              plan_args+=( -destroy )
+              ;;
+          esac
+
+          set +e
+          terraform -chdir="$TF_WORK_DIR" plan "${plan_args[@]}"
+          exit_code=$?
+          set -e
+
+          case "$exit_code" in
+            0)
+              echo "has_changes=false" >>"$GITHUB_OUTPUT"
+              ;;
+            2)
+              echo "has_changes=true" >>"$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "terraform plan failed with exit code $exit_code" >&2
+              exit "$exit_code"
+              ;;
+          esac
+
+      - name: Render and summarize plan
+        id: render
+        env:
+          OPERATION: ${{ inputs.operation }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          ENABLE_HTTPS: ${{ steps.certificate.outputs.enable_https }}
+          CERTIFICATE_ARN: ${{ steps.certificate.outputs.certificate_arn }}
+          HAS_CHANGES: ${{ steps.terraform_plan.outputs.has_changes }}
+        run: |
+          set -Eeuo pipefail
+
+          terraform -chdir="$TF_WORK_DIR" show -no-color tfplan \
+            >"$TF_WORK_DIR/tfplan.txt"
+          terraform -chdir="$TF_WORK_DIR" show -json tfplan \
+            >"$TF_WORK_DIR/tfplan.json"
+
+          jq -n \
+            --arg environment "$TARGET_ENVIRONMENT" \
+            --arg operation "$OPERATION" \
+            --arg git_sha "$GITHUB_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg image_uri "$IMAGE_URI" \
+            --arg enable_https "$ENABLE_HTTPS" \
+            --arg certificate_arn "$CERTIFICATE_ARN" \
+            --arg has_changes "$HAS_CHANGES" \
+            --arg created_at "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              environment: $environment,
+              operation: $operation,
+              git_sha: $git_sha,
+              run_id: $run_id,
+              run_attempt: $run_attempt,
+              image_uri: $image_uri,
+              enable_https: ($enable_https == "true"),
+              certificate_arn: (if $certificate_arn == "" then null else $certificate_arn end),
+              has_changes: ($has_changes == "true"),
+              created_at: $created_at
+            }' >"$TF_WORK_DIR/plan-metadata.json"
+
+          summary=$(jq '
+            [.resource_changes[]?.change.actions] as $actions |
+            {
+              create:  [$actions[] | select(. == ["create"])] | length,
+              update:  [$actions[] | select(. == ["update"])] | length,
+              delete:  [$actions[] | select(. == ["delete"])] | length,
+              replace: [$actions[] | select(. == ["delete", "create"] or . == ["create", "delete"])] | length,
+              read:    [$actions[] | select(. == ["read"])] | length,
+              no_op:   [$actions[] | select(. == ["no-op"])] | length
+            }' "$TF_WORK_DIR/tfplan.json")
+
+          creates=$(jq -r '.create' <<<"$summary")
+          updates=$(jq -r '.update' <<<"$summary")
+          deletes=$(jq -r '.delete' <<<"$summary")
+          replaces=$(jq -r '.replace' <<<"$summary")
+          reads=$(jq -r '.read' <<<"$summary")
+          no_ops=$(jq -r '.no_op' <<<"$summary")
+
+          cat >>"$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Terraform plan
+
+          | Field | Value |
+          |---|---|
+          | Environment | \`$TARGET_ENVIRONMENT\` |
+          | Operation | \`$OPERATION\` |
+          | Image | \`$IMAGE_URI\` |
+          | HTTPS | \`$ENABLE_HTTPS\` |
+          | Changes | \`$HAS_CHANGES\` |
+
+          | Create | Update | Replace | Delete | Read | No-op |
+          |---:|---:|---:|---:|---:|---:|
+          | $creates | $updates | $replaces | $deletes | $reads | $no_ops |
+
+          Review the uploaded \`tfplan.txt\` before approving the apply job.
+          SUMMARY
+
+          # The JSON plan is needed only for the compact change summary. Do not
+          # retain its machine-readable values in the downloadable artifact.
+          rm -f "$TF_WORK_DIR/tfplan.json"
+          (
+            cd "$TF_WORK_DIR"
+            sha256sum tfplan tfplan.txt plan-metadata.json >plan.sha256
+          )
+          tfplan_sha256=$(sha256sum "$TF_WORK_DIR/tfplan" | awk '{print $1}')
+          echo "tfplan_sha256=$tfplan_sha256" >>"$GITHUB_OUTPUT"
+
+      - name: Name plan artifact
+        id: plan_metadata
+        run: |
+          set -Eeuo pipefail
+          echo "artifact_name=terraform-${{ inputs.environment }}-${{ inputs.operation }}-${{ github.run_id }}-${{ github.run_attempt }}" >>"$GITHUB_OUTPUT"
+
+      - name: Upload immutable reviewed plan
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ steps.plan_metadata.outputs.artifact_name }}
+          path: |
+            ${{ env.TF_WORK_DIR }}/tfplan
+            ${{ env.TF_WORK_DIR }}/tfplan.txt
+            ${{ env.TF_WORK_DIR }}/plan-metadata.json
+            ${{ env.TF_WORK_DIR }}/plan.sha256
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  apply:
+    name: Approve and apply reviewed plan
+    needs:
+      - preflight
+      - plan
+    if: ${{ inputs.operation != 'plan' && inputs.operation != 'drift-check' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment:
+      name: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ needs.preflight.outputs.aws_region }}
+      AWS_DEFAULT_REGION: ${{ needs.preflight.outputs.aws_region }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_WORK_DIR: terraform/environments/${{ inputs.environment }}
+      TF_STATE_BUCKET: ${{ needs.preflight.outputs.tf_state_bucket }}
+      TF_STATE_KMS_KEY_ID: ${{ needs.preflight.outputs.tf_state_kms_key_id }}
+      DUCKDNS_SUBDOMAIN: ${{ needs.preflight.outputs.duckdns_subdomain }}
+      LETSENCRYPT_EMAIL: ${{ needs.preflight.outputs.letsencrypt_email }}
+    steps:
+      - name: Checkout the exact planned revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        with:
+          role-to-assume: ${{ needs.preflight.outputs.aws_deploy_role_arn }}
+          aws-region: ${{ needs.preflight.outputs.aws_region }}
+          role-session-name: gha-apply-${{ github.run_id }}
+          mask-aws-account-id: true
+
+      - name: Verify AWS account and assumed role
+        env:
+          EXPECTED_ROLE_ARN: ${{ needs.preflight.outputs.aws_deploy_role_arn }}
+        run: |
+          set -Eeuo pipefail
+          expected_account=$(cut -d: -f5 <<<"$EXPECTED_ROLE_ARN")
+          actual_account=$(aws sts get-caller-identity --query Account --output text)
+          actual_arn=$(aws sts get-caller-identity --query Arn --output text)
+          if [[ "$actual_account" != "$expected_account" ]]; then
+            echo "AWS account mismatch: expected $expected_account, received $actual_account" >&2
+            exit 2
+          fi
+          echo "Authenticated to AWS account $actual_account as $actual_arn"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: "~1.14.0"
+
+      - name: Initialize remote state
+        run: |
+          set -Eeuo pipefail
+          terraform -chdir="$TF_WORK_DIR" init \
+            -input=false \
+            -lockfile=readonly \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="kms_key_id=$TF_STATE_KMS_KEY_ID"
+
+      - name: Download reviewed plan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.plan.outputs.artifact_name }}
+          path: ${{ env.TF_WORK_DIR }}
+
+      - name: Verify plan checksum and provenance
+        env:
+          EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
+          EXPECTED_OPERATION: ${{ inputs.operation }}
+          EXPECTED_IMAGE_URI: ${{ needs.plan.outputs.image_uri }}
+          EXPECTED_PLAN_SHA256: ${{ needs.plan.outputs.tfplan_sha256 }}
+        run: |
+          set -Eeuo pipefail
+
+          (
+            cd "$TF_WORK_DIR"
+            sha256sum --check --strict plan.sha256
+          )
+          actual_plan_sha256=$(sha256sum "$TF_WORK_DIR/tfplan" | awk '{print $1}')
+          if [[ "$actual_plan_sha256" != "$EXPECTED_PLAN_SHA256" ]]; then
+            echo "Downloaded plan digest mismatch" >&2
+            exit 2
+          fi
+
+          jq -e \
+            --arg environment "$EXPECTED_ENVIRONMENT" \
+            --arg operation "$EXPECTED_OPERATION" \
+            --arg git_sha "$GITHUB_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg image_uri "$EXPECTED_IMAGE_URI" \
+            '.environment == $environment and
+             .operation == $operation and
+             .git_sha == $git_sha and
+             .run_id == $run_id and
+             .run_attempt == $run_attempt and
+             .image_uri == $image_uri' \
+            "$TF_WORK_DIR/plan-metadata.json" >/dev/null
+
+      - name: Validate certificate bootstrap secret
+        if: ${{ inputs.operation == 'bootstrap-certificate' }}
         env:
           DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
-        working-directory: terraform/environments/prod
         run: |
+          set -Eeuo pipefail
+          if [[ -z "$DUCKDNS_TOKEN" ]]; then
+            echo "The prod environment secret DUCKDNS_TOKEN is required before the HTTP bootstrap plan can be applied" >&2
+            exit 2
+          fi
+          echo "::add-mask::$DUCKDNS_TOKEN"
+
+      - name: Apply exactly the reviewed plan
+        run: |
+          set -Eeuo pipefail
+          terraform -chdir="$TF_WORK_DIR" apply \
+            -input=false \
+            -lock-timeout=5m \
+            tfplan
+
+      - name: Issue and import first Let's Encrypt certificate
+        if: ${{ inputs.operation == 'bootstrap-certificate' }}
+        env:
+          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+
           if [[ -z "$DUCKDNS_TOKEN" || -z "$DUCKDNS_SUBDOMAIN" || -z "$LETSENCRYPT_EMAIL" ]]; then
             echo "DUCKDNS_TOKEN, DUCKDNS_SUBDOMAIN, and LETSENCRYPT_EMAIL are required" >&2
             exit 2
           fi
           echo "::add-mask::$DUCKDNS_TOKEN"
 
-          # Create the static endpoint first, with HTTP only until ACM has a certificate.
-          terraform apply -input=false -auto-approve \
-            -var="app_image_uri=${{ steps.deployment_image.outputs.uri }}" \
-            -var="enable_duckdns=true" \
-            -var="duckdns_subdomain=$DUCKDNS_SUBDOMAIN" \
-            -var="enable_https=false"
+          duckdns_ip=$(terraform -chdir="$TF_WORK_DIR" output -raw duckdns_ipv4)
+          if [[ ! "$duckdns_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            echo "Terraform did not return a valid DuckDNS IPv4 address: $duckdns_ip" >&2
+            exit 1
+          fi
 
-          duckdns_ip=$(terraform output -raw duckdns_ipv4)
           if aws secretsmanager describe-secret \
             --secret-id local-ai-assistant/duckdns-token >/dev/null 2>&1; then
             aws secretsmanager put-secret-value \
@@ -163,134 +940,136 @@ jobs:
           else
             aws secretsmanager create-secret \
               --name local-ai-assistant/duckdns-token \
-              --secret-string "$DUCKDNS_TOKEN" >/dev/null
+              --description "DuckDNS token used by the certificate renewal workflow" \
+              --secret-string "$DUCKDNS_TOKEN" \
+              --tags Key=Project,Value=local-ai-assistant Key=ManagedBy,Value=github-actions \
+              >/dev/null
           fi
 
-          ../../../scripts/update_duckdns.sh "$DUCKDNS_SUBDOMAIN" "$duckdns_ip"
+          ./scripts/update_duckdns.sh "$DUCKDNS_SUBDOMAIN" "$duckdns_ip"
+
           sudo apt-get update
           sudo apt-get install --yes certbot
-          certificate_arn=$(DUCKDNS_TOKEN="$DUCKDNS_TOKEN" \
-            ../../../scripts/issue_letsencrypt_duckdns.sh \
-              "$LETSENCRYPT_EMAIL" "$DUCKDNS_SUBDOMAIN")
 
-          aws ssm put-parameter --overwrite --type String \
+          certificate_arn=$(DUCKDNS_TOKEN="$DUCKDNS_TOKEN" \
+            ./scripts/issue_letsencrypt_duckdns.sh \
+              "$LETSENCRYPT_EMAIL" \
+              "$DUCKDNS_SUBDOMAIN")
+
+          if [[ ! "$certificate_arn" =~ ^arn:aws:acm:${AWS_REGION}:[0-9]{12}:certificate/.+ ]]; then
+            echo "Certificate script returned an invalid ACM ARN: $certificate_arn" >&2
+            exit 1
+          fi
+
+          expected_domain="${DUCKDNS_SUBDOMAIN}.duckdns.org"
+          actual_domain=$(aws acm describe-certificate \
+            --certificate-arn "$certificate_arn" \
+            --query Certificate.DomainName \
+            --output text)
+          status=$(aws acm describe-certificate \
+            --certificate-arn "$certificate_arn" \
+            --query Certificate.Status \
+            --output text)
+          if [[ "$actual_domain" != "$expected_domain" || "$status" != "ISSUED" ]]; then
+            echo "Imported certificate validation failed: domain=$actual_domain status=$status" >&2
+            exit 1
+          fi
+
+          aws ssm put-parameter \
+            --overwrite \
+            --type String \
             --name /local-ai-assistant/prod/letsencrypt/acm_certificate_arn \
             --value "$certificate_arn" >/dev/null
-          aws ssm put-parameter --overwrite --type String \
+          aws ssm put-parameter \
+            --overwrite \
+            --type String \
             --name /local-ai-assistant/prod/letsencrypt/duckdns_ipv4 \
             --value "$duckdns_ip" >/dev/null
-          echo "TF_VAR_certificate_arn=$certificate_arn" >>"$GITHUB_ENV"
-          echo "TF_VAR_enable_https=true" >>"$GITHUB_ENV"
-      - name: Prepare production for destruction
-        if: inputs.operation == 'destroy' && inputs.environment == 'prod'
-        working-directory: terraform/environments/prod
-        # Do not reconcile the complete configuration here: that could create
-        # unrelated resources before the destroy plan is made.
-        run: >-
-          terraform apply -input=false -auto-approve
-          -target=module.platform.aws_db_instance.chat
-          -target=module.platform.aws_lb.public
-          -target=module.platform.aws_lb.ollama
-          -var="app_image_uri=${{ steps.deployment_image.outputs.uri }}"
-          -var="enable_https=false"
-          -var="enable_deletion_protection=false"
-          -var="force_destroy_log_bucket=true"
-      - name: Create infrastructure plan
-        working-directory: terraform/environments/${{ inputs.environment }}
-        run: |
-          operation='${{ inputs.operation }}'
-          plan_args=(
-            -input=false
-            -out=tfplan
-            -var="app_image_uri=${{ steps.deployment_image.outputs.uri }}"
-          )
-          if [[ "$operation" == "destroy" ]]; then
-            plan_args+=( -destroy )
-            if [[ "${{ inputs.environment }}" == "prod" ]]; then
-              plan_args+=(
-                -var="enable_https=false"
-                -var="enable_deletion_protection=false"
-                -var="force_destroy_log_bucket=true"
-              )
-            fi
-          fi
-          terraform plan "${plan_args[@]}"
-      - name: Render plan for review
-        working-directory: terraform/environments/${{ inputs.environment }}
-        run: |
-          terraform show -no-color tfplan > tfplan.txt
-          echo "Terraform plan is available in the workflow artifact as tfplan.txt."
-      - name: Name plan artifact
-        id: plan_metadata
-        run: |
-          echo "artifact_name=terraform-${{ inputs.operation }}-plan-${{ inputs.environment }}-${{ github.sha }}" >>"$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: ${{ steps.plan_metadata.outputs.artifact_name }}
-          path: |
-            terraform/environments/${{ inputs.environment }}/tfplan
-            terraform/environments/${{ inputs.environment }}/tfplan.txt
-          retention-days: 7
 
-  apply:
-    needs: plan
-    if: ${{ inputs.operation != 'plan' }}
-    runs-on: ubuntu-latest
-    # A protected environment approval on this job happens after the plan job
-    # has published its readable tfplan.txt artifact.
-    environment: ${{ inputs.environment }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Load non-secret environment configuration
-        id: config
+          cat >>"$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Certificate bootstrap completed
+
+          - Domain: \`$expected_domain\`
+          - ACM certificate: \`$certificate_arn\`
+          - DuckDNS IPv4: \`$duckdns_ip\`
+
+          Run this workflow again with **operation=deploy** to create the HTTPS listener and HTTP-to-HTTPS redirect from a separately reviewed Terraform plan.
+          SUMMARY
+
+      - name: Reconcile production DuckDNS record
+        if: ${{ inputs.operation == 'deploy' && inputs.environment == 'prod' && needs.preflight.outputs.enable_duckdns == 'true' }}
+        env:
+          DUCKDNS_TOKEN: ${{ secrets.DUCKDNS_TOKEN }}
         run: |
-          config_file=".github/deployment-config/${{ inputs.environment }}.env"
-          if [[ ! -f "$config_file" ]]; then
-            echo "Missing $config_file; copy and configure its .example file" >&2
+          set -Eeuo pipefail
+
+          token=${DUCKDNS_TOKEN:-}
+          if [[ -z "$token" ]]; then
+            token=$(aws secretsmanager get-secret-value \
+              --secret-id local-ai-assistant/duckdns-token \
+              --query SecretString \
+              --output text 2>/dev/null || true)
+            [[ "$token" == "None" ]] && token=""
+          fi
+          if [[ -z "$token" ]]; then
+            echo "DuckDNS is enabled but neither the prod DUCKDNS_TOKEN secret nor the renewal token in Secrets Manager is available" >&2
             exit 2
           fi
-          while IFS= read -r line || [[ -n "$line" ]]; do
-            [[ -z "$line" || "$line" == \#* ]] && continue
-            if [[ ! "$line" =~ ^[A-Z][A-Z0-9_]*= ]]; then
-              echo "Invalid configuration line in $config_file" >&2
-              exit 2
-            fi
-            echo "$line" >>"$GITHUB_ENV"
-            echo "$line" >>"$GITHUB_OUTPUT"
-          done <"$config_file"
-      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
-        with:
-          role-to-assume: ${{ steps.config.outputs.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ap-south-1
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
-        with:
-          terraform_version: "~1.14.0"
-      - name: Initialize remote state
-        working-directory: terraform/environments/${{ inputs.environment }}
+          echo "::add-mask::$token"
+
+          duckdns_ip=$(terraform -chdir="$TF_WORK_DIR" output -raw duckdns_ipv4)
+          if [[ ! "$duckdns_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            echo "Terraform did not return a valid DuckDNS IPv4 address: $duckdns_ip" >&2
+            exit 1
+          fi
+
+          DUCKDNS_TOKEN="$token" ./scripts/update_duckdns.sh \
+            "$DUCKDNS_SUBDOMAIN" \
+            "$duckdns_ip"
+          aws ssm put-parameter \
+            --overwrite \
+            --type String \
+            --name /local-ai-assistant/prod/letsencrypt/duckdns_ipv4 \
+            --value "$duckdns_ip" >/dev/null
+          echo "DuckDNS now points ${DUCKDNS_SUBDOMAIN}.duckdns.org to $duckdns_ip."
+
+      - name: Verify teardown preparation
+        if: ${{ inputs.operation == 'prepare-destroy' }}
         run: |
-          terraform init -input=false \
-            -backend-config="bucket=$TF_STATE_BUCKET" \
-            -backend-config="kms_key_id=$TF_STATE_KMS_KEY_ID"
-      - name: Download reviewed plan
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: ${{ needs.plan.outputs.plan_artifact_name }}
-          path: terraform/environments/${{ inputs.environment }}
-      - name: Execute approved saved plan
-        working-directory: terraform/environments/${{ inputs.environment }}
-        run: terraform apply -input=false tfplan
+          set -Eeuo pipefail
+
+          terraform -chdir="$TF_WORK_DIR" state show -no-color module.platform.aws_db_instance.chat \
+            | grep -Eq 'deletion_protection[[:space:]]*=[[:space:]]*false'
+          terraform -chdir="$TF_WORK_DIR" state show -no-color module.platform.aws_lb.public \
+            | grep -Eq 'enable_deletion_protection[[:space:]]*=[[:space:]]*false'
+          terraform -chdir="$TF_WORK_DIR" state show -no-color module.platform.aws_lb.ollama \
+            | grep -Eq 'enable_deletion_protection[[:space:]]*=[[:space:]]*false'
+          terraform -chdir="$TF_WORK_DIR" state show -no-color module.platform.aws_s3_bucket.alb_logs \
+            | grep -Eq 'force_destroy[[:space:]]*=[[:space:]]*true'
+
+          cat >>"$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Production teardown preparation completed
+
+          RDS and ALB deletion protection are disabled, and the ALB log bucket is configured for force destruction. Review and run a separate **operation=destroy** workflow with confirmation `DESTROY prod`.
+          SUMMARY
+
       - name: Bootstrap PostgreSQL IAM user
-        if: inputs.operation == 'deploy'
-        working-directory: terraform/environments/${{ inputs.environment }}
+        if: ${{ inputs.operation == 'deploy' && inputs.run_db_bootstrap }}
         run: |
-          project_name=$(terraform output -raw database_bootstrap_project_name)
-          build_id=$(aws codebuild start-build --project-name "$project_name" \
-            --query 'build.id' --output text)
+          set -Eeuo pipefail
+
+          project_name=$(terraform -chdir="$TF_WORK_DIR" output -raw database_bootstrap_project_name)
+          build_id=$(aws codebuild start-build \
+            --project-name "$project_name" \
+            --query build.id \
+            --output text)
           echo "Started database bootstrap build: $build_id"
 
           for _ in $(seq 1 90); do
-            status=$(aws codebuild batch-get-builds --ids "$build_id" \
-              --query 'builds[0].buildStatus' --output text)
+            status=$(aws codebuild batch-get-builds \
+              --ids "$build_id" \
+              --query 'builds[0].buildStatus' \
+              --output text)
             case "$status" in
               SUCCEEDED)
                 echo "PostgreSQL IAM user bootstrap completed."
@@ -306,9 +1085,62 @@ jobs:
 
           echo "Timed out waiting for database bootstrap build: $build_id" >&2
           exit 1
-      - name: Wait for application health
-        if: inputs.operation == 'deploy'
-        working-directory: terraform/environments/${{ inputs.environment }}
+
+      - name: Wait for application health and run smoke tests
+        if: ${{ inputs.operation == 'deploy' && inputs.run_smoke_tests }}
         run: |
-          health_url=$(terraform output -raw application_health_url)
-          ../../../scripts/wait_for_application.sh "$health_url"
+          set -Eeuo pipefail
+
+          health_url=$(terraform -chdir="$TF_WORK_DIR" output -raw application_health_url)
+          application_url=$(terraform -chdir="$TF_WORK_DIR" output -raw application_url)
+          ./scripts/wait_for_application.sh "$health_url"
+          ./scripts/smoke_test.sh "$application_url"
+
+          cat >>"$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Deployment verification passed
+
+          - Application: $application_url
+          - Health endpoint: $health_url
+          - Image: \`${{ needs.plan.outputs.image_uri }}\`
+          SUMMARY
+
+      - name: Record destroy completion
+        if: ${{ inputs.operation == 'destroy' }}
+        run: |
+          cat >>"$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## Terraform destroy completed
+
+          Terraform-managed resources were removed. The imported ACM certificate, DuckDNS record, SSM certificate parameters, and DuckDNS renewal secret are intentionally retained because they are not managed by the workload Terraform state. Remove them separately only after confirming they are no longer required.
+          SUMMARY
+
+  summary:
+    name: Workflow summary
+    if: ${{ always() }}
+    needs:
+      - preflight
+      - plan
+      - apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Publish final status
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          APPLY_RESULT: ${{ needs.apply.result }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          cat >>"$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Final workflow status
+
+          | Job | Result |
+          |---|---|
+          | Preflight | \`$PREFLIGHT_RESULT\` |
+          | Plan | \`$PLAN_RESULT\` |
+          | Apply | \`$APPLY_RESULT\` |
+
+          - Environment: \`$TARGET_ENVIRONMENT\`
+          - Operation: \`$OPERATION\`
+          SUMMARY
