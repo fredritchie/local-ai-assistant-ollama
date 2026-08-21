@@ -385,8 +385,14 @@ jobs:
           validate_uri() {
             local uri=$1
             local digest=${uri##*@}
-            if [[ "$uri" != "${ECR_REPOSITORY_URL}@"* || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            if [[ "$uri" =~ ^${ECR_REPOSITORY_URL}(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$ ]]; then
+              echo "Valid digest-pinned ECR image:"
+              echo "$uri"
+            else
               echo "Image must be a digest-pinned image from $ECR_REPOSITORY_URL" >&2
+              echo "Accepted formats:" >&2
+              echo "  ${ECR_REPOSITORY_URL}@sha256:<digest>" >&2
+              echo "  ${ECR_REPOSITORY_URL}:<tag>@sha256:<digest>" >&2
               exit 2
             fi
           }
