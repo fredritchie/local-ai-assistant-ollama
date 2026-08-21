@@ -26,8 +26,9 @@ environment secret only for the DuckDNS token.
   rendering without changing AWS. `operation=deploy` creates the same artifacts
   and applies that saved binary plan after the apply job passes any configured
   environment protection rules.
-- The first DuckDNS/Let's Encrypt deployment executes an explicit pre-final-plan
-  mutation. Production teardown makes a deliberately **targeted** change only
+- The first DuckDNS/Let's Encrypt deployment applies the reviewed HTTP bootstrap
+  plan, then issues the certificate and reconciles the HTTPS listener in the
+  protected apply job. Production teardown makes a deliberately **targeted** change only
   through AWS APIs to remove deletion protection from the database and two load
   balancers already recorded in state. It fails without creating anything when
   production state is empty. These exceptions are required before a final
@@ -297,9 +298,10 @@ PROD_LETSENCRYPT_EMAIL=operator@example.com
 Run `./scripts/sync_github_environment.sh prod` and enter the rotated DuckDNS
 token when prompted. The script writes non-secret configuration to the
 protected GitHub environment and sends the token directly to the
-`DUCKDNS_TOKEN` environment secret. The first production deploy creates the
-Global Accelerator and HTTP bootstrap path, updates DuckDNS, imports the
-certificate, and applies the final HTTPS listener.
+`DUCKDNS_TOKEN` environment secret. The first production deploy applies the
+reviewed HTTP bootstrap plan, then creates the Global Accelerator and HTTP
+path, updates DuckDNS, imports the certificate, and applies the final HTTPS
+listener from the protected apply job. A `plan` run never issues a certificate.
 
 ### Renewal and expiry monitoring
 
