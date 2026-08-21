@@ -385,14 +385,8 @@ jobs:
           validate_uri() {
             local uri=$1
             local digest=${uri##*@}
-            if [[ "$uri" =~ ^${ECR_REPOSITORY_URL}(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$ ]]; then
-              echo "Valid digest-pinned ECR image:"
-              echo "$uri"
-            else
+            if [[ "$uri" != "${ECR_REPOSITORY_URL}@"* || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "Image must be a digest-pinned image from $ECR_REPOSITORY_URL" >&2
-              echo "Accepted formats:" >&2
-              echo "  ${ECR_REPOSITORY_URL}@sha256:<digest>" >&2
-              echo "  ${ECR_REPOSITORY_URL}:<tag>@sha256:<digest>" >&2
               exit 2
             fi
           }
@@ -874,70 +868,30 @@ jobs:
         run: |
           set -Eeuo pipefail
 
-          echo "=== Verify artifact checksums ==="
-
           (
             cd "$TF_WORK_DIR"
             sha256sum --check --strict plan.sha256
           )
-
-          echo
-          echo "=== Verify Terraform plan SHA256 ==="
-
           actual_plan_sha256=$(sha256sum "$TF_WORK_DIR/tfplan" | awk '{print $1}')
-
-          echo "Expected: $EXPECTED_PLAN_SHA256"
-          echo "Actual:   $actual_plan_sha256"
-
           if [[ "$actual_plan_sha256" != "$EXPECTED_PLAN_SHA256" ]]; then
-            echo "::error::Downloaded Terraform plan digest mismatch"
+            echo "Downloaded plan digest mismatch" >&2
             exit 2
           fi
 
-          echo
-          echo "=== Plan provenance ==="
-
-          actual_environment=$(jq -r '.environment' "$TF_WORK_DIR/plan-metadata.json")
-          actual_operation=$(jq -r '.operation' "$TF_WORK_DIR/plan-metadata.json")
-          actual_git_sha=$(jq -r '.git_sha' "$TF_WORK_DIR/plan-metadata.json")
-          actual_run_id=$(jq -r '.run_id' "$TF_WORK_DIR/plan-metadata.json")
-          actual_run_attempt=$(jq -r '.run_attempt' "$TF_WORK_DIR/plan-metadata.json")
-          actual_image_uri=$(jq -r '.image_uri' "$TF_WORK_DIR/plan-metadata.json")
-
-          failed=false
-
-          compare() {
-            local field="$1"
-            local expected="$2"
-            local actual="$3"
-
-            if [[ "$expected" == "$actual" ]]; then
-              echo "✓ $field"
-            else
-              echo "✗ $field"
-              echo "    expected: $expected"
-              echo "    actual:   $actual"
-              failed=true
-            fi
-          }
-
-          compare "environment" "$EXPECTED_ENVIRONMENT" "$actual_environment"
-          compare "operation" "$EXPECTED_OPERATION" "$actual_operation"
-          compare "git_sha" "$GITHUB_SHA" "$actual_git_sha"
-          compare "run_id" "$GITHUB_RUN_ID" "$actual_run_id"
-          compare "run_attempt" "$GITHUB_RUN_ATTEMPT" "$actual_run_attempt"
-          compare "image_uri" "$EXPECTED_IMAGE_URI" "$actual_image_uri"
-
-          if [[ "$failed" == "true" ]]; then
-            echo
-            echo "::error::Terraform plan provenance validation failed"
-            exit 2
-          fi
-
-          echo
-          echo "✓ Plan checksum verified"
-          echo "✓ Plan provenance verified"
-          echo "✓ Plan is safe to apply"
+          jq -e \
+            --arg environment "$EXPECTED_ENVIRONMENT" \
+            --arg operation "$EXPECTED_OPERATION" \
+            --arg git_sha "$GITHUB_SHA" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg image_uri "$EXPECTED_IMAGE_URI" \
+            '.environment == $environment and
+             .operation == $operation and
+             .git_sha == $git_sha and
+             .run_id == $run_id and
+             .run_attempt == $run_attempt and
+             .image_uri == $image_uri' \
+            "$TF_WORK_DIR/plan-metadata.json" >/dev/null
 
       - name: Validate certificate bootstrap secret
         if: ${{ inputs.operation == 'bootstrap-certificate' }}
