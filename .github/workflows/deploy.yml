@@ -328,7 +328,8 @@ jobs:
       LETSENCRYPT_EMAIL: ${{ needs.preflight.outputs.letsencrypt_email }}
     outputs:
       artifact_name: ${{ steps.plan_metadata.outputs.artifact_name }}
-      image_uri: ${{ steps.image.outputs.uri }}
+      image_digest: ${{ steps.image.outputs.digest }}
+      image_tag: ${{ steps.image.outputs.tag }}
       has_changes: ${{ steps.terraform_plan.outputs.has_changes }}
       certificate_arn: ${{ steps.certificate.outputs.certificate_arn }}
       enable_https: ${{ steps.certificate.outputs.enable_https }}
@@ -385,10 +386,36 @@ jobs:
           validate_uri() {
             local uri=$1
             local digest=${uri##*@}
-            if [[ "$uri" != "${ECR_REPOSITORY_URL}@"* || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-              echo "Image must be a digest-pinned image from $ECR_REPOSITORY_URL" >&2
+            local repository_ref=${uri%@*}
+            local tag=""
+
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Image must contain an immutable sha256 digest" >&2
+              echo "Received: $uri" >&2
               exit 2
             fi
+
+            # Accept both canonical digest form:
+            #   repo@sha256:...
+            # and a traceable tag+digest form:
+            #   repo:sha-<commit>@sha256:...
+            if [[ "$repository_ref" == "$ECR_REPOSITORY_URL" ]]; then
+              return 0
+            fi
+
+            if [[ "$repository_ref" == "$ECR_REPOSITORY_URL:"* ]]; then
+              tag=${repository_ref#"$ECR_REPOSITORY_URL:"}
+              if [[ -n "$tag" && "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+                return 0
+              fi
+            fi
+
+            echo "Image must be a digest-pinned image from $ECR_REPOSITORY_URL" >&2
+            echo "Accepted forms:" >&2
+            echo "  ${ECR_REPOSITORY_URL}@sha256:<64-hex-digest>" >&2
+            echo "  ${ECR_REPOSITORY_URL}:<tag>@sha256:<64-hex-digest>" >&2
+            echo "Received: $uri" >&2
+            exit 2
           }
 
           source=$IMAGE_SOURCE
@@ -412,7 +439,7 @@ jobs:
                 --query 'imageDetails[0].imageDigest' \
                 --output text 2>/dev/null || true)
               if [[ "$existing_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-                image_uri="${ECR_REPOSITORY_URL}@${existing_digest}"
+                image_uri="${ECR_REPOSITORY_URL}:${image_tag}@${existing_digest}"
                 echo "Reusing the immutable image already built for $GITHUB_SHA."
               else
                 image_uri=$(./scripts/build_and_push.sh "$ECR_REPOSITORY_URL")
@@ -457,9 +484,19 @@ jobs:
             fi
           fi
 
+          repository_and_tag=${image_uri%@*}
+          image_tag=""
+          if [[ "$repository_and_tag" == "$ECR_REPOSITORY_URL:"* ]]; then
+            image_tag=${repository_and_tag#"$ECR_REPOSITORY_URL:"}
+          fi
+
           echo "uri=$image_uri" >>"$GITHUB_OUTPUT"
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+          echo "tag=$image_tag" >>"$GITHUB_OUTPUT"
           echo "source=$source" >>"$GITHUB_OUTPUT"
           echo "Resolved application image: $image_uri"
+          echo "Image tag: ${image_tag:-<none>}"
+          echo "Image digest: $digest"
 
       - name: Initialize remote state
         run: |
@@ -863,35 +900,73 @@ jobs:
         env:
           EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
           EXPECTED_OPERATION: ${{ inputs.operation }}
-          EXPECTED_IMAGE_URI: ${{ needs.plan.outputs.image_uri }}
+          EXPECTED_IMAGE_DIGEST: ${{ needs.plan.outputs.image_digest }}
           EXPECTED_PLAN_SHA256: ${{ needs.plan.outputs.tfplan_sha256 }}
         run: |
           set -Eeuo pipefail
 
+          echo "=== Verify artifact checksums ==="
           (
             cd "$TF_WORK_DIR"
             sha256sum --check --strict plan.sha256
           )
+
+          echo
+          echo "=== Verify Terraform plan SHA256 ==="
           actual_plan_sha256=$(sha256sum "$TF_WORK_DIR/tfplan" | awk '{print $1}')
+          echo "Expected: $EXPECTED_PLAN_SHA256"
+          echo "Actual:   $actual_plan_sha256"
           if [[ "$actual_plan_sha256" != "$EXPECTED_PLAN_SHA256" ]]; then
-            echo "Downloaded plan digest mismatch" >&2
+            echo "::error::Downloaded Terraform plan digest mismatch"
             exit 2
           fi
 
-          jq -e \
-            --arg environment "$EXPECTED_ENVIRONMENT" \
-            --arg operation "$EXPECTED_OPERATION" \
-            --arg git_sha "$GITHUB_SHA" \
-            --arg run_id "$GITHUB_RUN_ID" \
-            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
-            --arg image_uri "$EXPECTED_IMAGE_URI" \
-            '.environment == $environment and
-             .operation == $operation and
-             .git_sha == $git_sha and
-             .run_id == $run_id and
-             .run_attempt == $run_attempt and
-             .image_uri == $image_uri' \
-            "$TF_WORK_DIR/plan-metadata.json" >/dev/null
+          echo
+          echo "=== Plan provenance ==="
+          actual_environment=$(jq -r '.environment' "$TF_WORK_DIR/plan-metadata.json")
+          actual_operation=$(jq -r '.operation' "$TF_WORK_DIR/plan-metadata.json")
+          actual_git_sha=$(jq -r '.git_sha' "$TF_WORK_DIR/plan-metadata.json")
+          actual_run_id=$(jq -r '.run_id' "$TF_WORK_DIR/plan-metadata.json")
+          actual_run_attempt=$(jq -r '.run_attempt' "$TF_WORK_DIR/plan-metadata.json")
+          actual_image_uri=$(jq -r '.image_uri' "$TF_WORK_DIR/plan-metadata.json")
+          actual_image_digest=${actual_image_uri##*@}
+
+          failed=false
+          compare() {
+            local field="$1"
+            local expected="$2"
+            local actual="$3"
+
+            if [[ "$expected" == "$actual" ]]; then
+              echo "OK $field"
+            else
+              echo "FAIL $field"
+              echo "    expected: $expected"
+              echo "    actual:   $actual"
+              failed=true
+            fi
+          }
+
+          compare "environment" "$EXPECTED_ENVIRONMENT" "$actual_environment"
+          compare "operation" "$EXPECTED_OPERATION" "$actual_operation"
+          compare "git_sha" "$GITHUB_SHA" "$actual_git_sha"
+          compare "run_id" "$GITHUB_RUN_ID" "$actual_run_id"
+          compare "run_attempt" "$GITHUB_RUN_ATTEMPT" "$actual_run_attempt"
+          compare "image_digest" "$EXPECTED_IMAGE_DIGEST" "$actual_image_digest"
+
+          echo
+          echo "Reviewed image: $actual_image_uri"
+
+          if [[ "$failed" == "true" ]]; then
+            echo "::error::Terraform plan provenance validation failed"
+            exit 2
+          fi
+
+          echo "REVIEWED_IMAGE_URI=$actual_image_uri" >>"$GITHUB_ENV"
+          echo "REVIEWED_IMAGE_DIGEST=$actual_image_digest" >>"$GITHUB_ENV"
+
+          echo
+          echo "Plan checksum and provenance verification passed."
 
       - name: Validate certificate bootstrap secret
         if: ${{ inputs.operation == 'bootstrap-certificate' }}
@@ -1101,7 +1176,7 @@ jobs:
 
           - Application: $application_url
           - Health endpoint: $health_url
-          - Image: \`${{ needs.plan.outputs.image_uri }}\`
+          - Image: \`$REVIEWED_IMAGE_URI\`
           SUMMARY
 
       - name: Record destroy completion
