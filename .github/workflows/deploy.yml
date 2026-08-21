@@ -371,7 +371,7 @@ jobs:
           ${{ inputs.image_source == 'build' ||
               (inputs.image_source == 'auto' &&
                (inputs.operation == 'deploy' || inputs.operation == 'bootstrap-certificate')) }}
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Resolve immutable application image
         id: image
