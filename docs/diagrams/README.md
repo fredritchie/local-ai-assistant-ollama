@@ -41,6 +41,16 @@ of truth is [`network.tf`](../../terraform/modules/platform/network.tf) and
   [`deploy.yml`](../../.github/workflows/deploy.yml), and
   [`build_and_push.sh`](../../scripts/build_and_push.sh)
 
+## CI/CD pipeline orchestration
+
+![CI/CD pipeline orchestration](cicd_pipeline_orchestration_architecture.png)
+
+- [Editable source](source/cicd_pipeline_orchestration_architecture.drawio)
+- Implementation: [`ci.yml`](../../.github/workflows/ci.yml),
+  [`deploy.yml`](../../.github/workflows/deploy.yml),
+  [`integration.yml`](../../.github/workflows/integration.yml), and
+  [`renew-certificate.yml`](../../.github/workflows/renew-certificate.yml)
+
 ## Packer and Ansible AMI builds
 
 ![Packer and Ansible AMI builds](packer_ansible_ami_build_architecture.png)
